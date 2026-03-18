@@ -1,0 +1,15 @@
+version: "3.2"
+
+services:
+  sun-panel-python:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: sun-panel-python
+    volumes:
+      - ./conf:/app/conf
+      - ./uploads:/app/uploads
+      - ./database:/app/database
+    ports:
+      - 3002:3002
+    restart: always

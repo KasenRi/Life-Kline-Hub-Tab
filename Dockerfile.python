@@ -1,0 +1,60 @@
+FROM node:22-alpine AS web_image
+
+ENV HTTP_PROXY=
+ENV HTTPS_PROXY=
+ENV ALL_PROXY=
+ENV http_proxy=
+ENV https_proxy=
+ENV all_proxy=
+
+RUN npm config delete proxy || true
+RUN npm config delete https-proxy || true
+RUN npm install -g pnpm@8.15.9
+
+WORKDIR /build
+
+COPY package.json pnpm-lock.yaml .env add-frontend-version.js tsconfig.json vite.config.ts postcss.config.js tailwind.config.js index.html ./
+COPY public ./public
+COPY src ./src
+COPY config ./config
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm run build
+
+
+FROM python:3.12-slim AS server_image
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV HTTP_PROXY=
+ENV HTTPS_PROXY=
+ENV ALL_PROXY=
+ENV http_proxy=
+ENV https_proxy=
+ENV all_proxy=
+
+WORKDIR /build
+
+RUN pip install --no-cache-dir uv
+
+COPY service_python ./service_python
+
+RUN uv sync --project /build/service_python --locked --no-dev
+
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/service_python
+
+WORKDIR /app
+
+COPY --from=server_image /build/service_python /app/service_python
+COPY --from=web_image /build/dist /app/web
+
+EXPOSE 3002
+
+RUN /app/service_python/.venv/bin/python -m sun_panel_python -config
+
+CMD ["/app/service_python/.venv/bin/python", "-m", "sun_panel_python"]

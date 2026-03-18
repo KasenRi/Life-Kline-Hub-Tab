@@ -1,0 +1,28 @@
+[project]
+name = "sun-panel-python"
+version = "0.1.0"
+description = "Python backend rewrite for Sun-Panel"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "beautifulsoup4>=4.12,<5",
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "psutil>=6,<7",
+  "pymysql>=1.1,<2",
+  "python-multipart>=0.0.18,<1",
+  "redis>=5,<6",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn>=0.35,<1",
+]
+
+[project.scripts]
+sun-panel-python = "sun_panel_python.__main__:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
