@@ -4,7 +4,7 @@ import type { NotificationReactive } from 'naive-ui'
 import { NButton, createDiscreteApi } from 'naive-ui'
 import { useAuthStore, useNoticeStore, useUserStore } from '@/store'
 import { getAuthInfo } from '@/api/system/user'
-import type { VisitMode } from '@/enums/auth'
+import { VisitMode } from '@/enums/auth'
 import { getListByDisplayType as getListByDisplayTypeApi } from '@/api/notice'
 
 const noticeStore = useNoticeStore()
@@ -108,10 +108,32 @@ export async function updateLocalUserInfo() {
     visitMode: VisitMode
   }
 
-  const { data } = await getAuthInfo<Req>()
-  userStore.updateUserInfo({ headImage: data.user.headImage, name: data.user.name })
-  authStore.setUserInfo(data.user)
-  authStore.setVisitMode(data.visitMode)
+  if (!authStore.token) {
+    authStore.setLoggedOut()
+    userStore.resetUserInfo()
+    return false
+  }
+
+  try {
+    const { code, data } = await getAuthInfo<Req>({
+      silentAuth: true,
+      silentError: true,
+    })
+
+    if (code === 0 && data.visitMode === VisitMode.VISIT_MODE_LOGIN) {
+      userStore.updateUserInfo({ headImage: data.user.headImage, name: data.user.name })
+      authStore.setUserInfo(data.user)
+      authStore.setVisitMode(data.visitMode)
+      return true
+    }
+
+    authStore.setLoggedOut()
+    userStore.resetUserInfo()
+    return false
+  }
+  catch {
+    return authStore.isLoggedIn
+  }
 }
 
 export async function getNotice(displayType: number | number[]) {

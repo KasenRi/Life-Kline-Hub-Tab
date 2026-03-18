@@ -3,8 +3,7 @@ import { computed, defineEmits, defineProps, ref, watch } from 'vue'
 import type { FormInst, FormRules } from 'naive-ui'
 import { NButton, NForm, NFormItem, NGrid, NGridItem, NInput, NInputGroup, NModal, NSelect, useMessage } from 'naive-ui'
 import IconEditor from './IconEditor.vue'
-import { edit, getSiteFavicon } from '@/api/panel/itemIcon'
-import { getList as getGroupList } from '@/api/panel/itemIconGroup'
+import { buildLocalFaviconUrl, getLocalItemGroups, saveLocalItem } from '@/utils/localFirst/panelData'
 import { t } from '@/locales'
 
 interface Props {
@@ -86,18 +85,12 @@ const show = computed({
 async function editApi() {
   submitLoading.value = true
   try {
-    const { code, data, msg } = await edit<Panel.ItemInfo>(model.value)
-    if (code === 0) {
-      show.value = false
-      model.value = { ...restoreDefault }
-
-      emit('done', data)
-    }
-    else {
-      ms.error(`${t('common.saveFail')}:${msg}`)
-    }
+    const data = await saveLocalItem(model.value)
+    show.value = false
+    model.value = { ...restoreDefault }
+    emit('done', data)
   }
-  catch (error) {
+  catch {
     ms.error(t('common.saveFail'))
   }
   submitLoading.value = false
@@ -114,18 +107,12 @@ const handleValidateButtonClick = (e: MouseEvent) => {
 async function getIconByUrl(url: string, loadingIndex: number) {
   getIconLoading.value[loadingIndex] = true
   try {
-    const { code, data } = await getSiteFavicon<{ iconUrl: string }>(url)
-    if (code === 0) {
-      model.value.icon = {
-        itemType: 2,
-        src: data.iconUrl,
-      }
-    }
-    else {
-      ms.error(t('iconItem.geticonFail'))
+    model.value.icon = {
+      itemType: 2,
+      src: buildLocalFaviconUrl(url),
     }
   }
-  catch (error) {
+  catch {
     ms.error(t('iconItem.geticonFail'))
   }
   getIconLoading.value[loadingIndex] = false
@@ -142,25 +129,20 @@ watch(() => props.visible, (newValue) => {
 })
 
 function getGroupListOptions() {
-  getGroupList<Common.ListResponse<Panel.ItemIconGroup[]>>().then(({ data, code, msg }) => {
-    if (code === 0) {
-      itemIconGroupOptions.value = []
+  getLocalItemGroups().then((groups) => {
+    itemIconGroupOptions.value = []
 
-      for (let i = 0; i < data.list.length; i++) {
-        const element = data.list[i]
-        if (i === 0 && !model.value.itemIconGroupId) {
-          model.value.itemIconGroupId = element.id
-          restoreDefault.itemIconGroupId = element.id
-        }
-
-        itemIconGroupOptions.value.push({
-          value: element.id as number,
-          label: element.title as string,
-        })
+    for (let i = 0; i < groups.length; i++) {
+      const element = groups[i]
+      if (i === 0 && !model.value.itemIconGroupId) {
+        model.value.itemIconGroupId = element.id
+        restoreDefault.itemIconGroupId = element.id
       }
-    }
-    else {
-      ms.error(`${t('iconItem.getGroupFail')}:${msg}`)
+
+      itemIconGroupOptions.value.push({
+        value: element.id as number,
+        label: element.title as string,
+      })
     }
   })
 }

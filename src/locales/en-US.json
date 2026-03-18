@@ -55,6 +55,8 @@
       "bottomMargin": "Bottom margin",
       "clock": "Clock component",
       "clockSecondShow": "Show seconds",
+      "cloudPulled": "Cloud settings pulled and applied locally",
+      "cloudSync": "Cloud sync",
       "configFailed": "Configuration save failed, {message}",
       "configSaved": "Configuration saved",
       "contentArea": "Content area",
@@ -64,10 +66,12 @@
       "hideDescription": "Hide description information",
       "hideTitle": "Hide title",
       "leftRightMargin": "Left-right margin",
+      "loginToSync": "Sign in to use cloud sync",
       "mask": "Mask",
       "maxWidth": "Max width",
       "netModeChangeButtonShow": "Show network mode switch button",
       "publicVisitModeShow": "Allow public mode display",
+      "pullFromCloud": "Pull cloud data",
       "resetWarnText": "Are you sure you want to reset these styles?",
       "searchBar": "Search bar component",
       "searchBarSearchItem": "Allow search bar to search items",
@@ -200,6 +204,7 @@
     },
     "searchBox": {
       "inputPlaceholder": "Enter search content",
+      "loginRequiredForAi": "Sign in to enable AI assistance and cloud snapshots",
       "openWithNewOpen": "Open in new window"
     },
     "systemMonitor": {
@@ -254,6 +259,7 @@
     "confirmLogoutText": "Are you sure you want to logout?",
     "confirmPassword": "Confirm new password",
     "confirmPasswordInconsistentMsg": "Passwords do not match",
+    "localMode": "Local mode",
     "logout": "Logout",
     "logoutSuccess": "You have safely logged out. Looking forward to seeing you again!",
     "newPassword": "New password",

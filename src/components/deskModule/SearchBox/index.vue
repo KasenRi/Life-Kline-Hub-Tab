@@ -3,8 +3,8 @@ import { defineEmits, onMounted, ref } from 'vue'
 import { NAvatar, NCheckbox } from 'naive-ui'
 import { SvgIcon } from '@/components/common'
 import { useModuleConfig } from '@/store/modules'
-import { useAuthStore } from '@/store'
-import { VisitMode } from '@/enums/auth'
+import { router } from '@/router'
+import { updateLocalUserInfo } from '@/utils/cmn'
 
 import SvgSrcBaidu from '@/assets/search_engine_svg/baidu.svg'
 import SvgSrcBing from '@/assets/search_engine_svg/bing.svg'
@@ -28,10 +28,10 @@ interface State {
 
 const moduleConfigName = 'deskModuleSearchBox'
 const moduleConfig = useModuleConfig()
-const authStore = useAuthStore()
 const searchTerm = ref('')
 const isFocused = ref(false)
 const searchSelectListShow = ref(false)
+const loginHintVisible = ref(false)
 const defaultSearchEngineList = ref<DeskModule.SearchBox.SearchEngine[]>([
   {
     iconSrc: SvgSrcGoogle,
@@ -52,7 +52,7 @@ const defaultSearchEngineList = ref<DeskModule.SearchBox.SearchEngine[]>([
 
 const defaultState: State = {
   currentSearchEngine: defaultSearchEngineList.value[0],
-  searchEngineList: [] || defaultSearchEngineList,
+  searchEngineList: defaultSearchEngineList.value,
   newWindowOpen: false,
 }
 
@@ -67,23 +67,33 @@ const onBlur = (): void => {
 }
 
 function handleEngineClick() {
-  // 访客模式不允许修改
-  if (authStore.visitMode === VisitMode.VISIT_MODE_PUBLIC)
-    return
   searchSelectListShow.value = !searchSelectListShow.value
 }
 
 function handleEngineUpdate(engine: DeskModule.SearchBox.SearchEngine) {
   state.value.currentSearchEngine = engine
-  moduleConfig.saveToCloud(moduleConfigName, state.value)
+  moduleConfig.saveToLocal(moduleConfigName, state.value)
   searchSelectListShow.value = false
 }
 
-function handleSearchClick() {
+async function ensureCloudAccess() {
+  const valid = await updateLocalUserInfo()
+  loginHintVisible.value = !valid
+  return valid
+}
+
+async function handleSearchClick() {
+  const keyword = searchTerm.value.trim()
+  if (keyword.startsWith('-')) {
+    if (!(await ensureCloudAccess()))
+      return
+    return
+  }
+
+  loginHintVisible.value = false
   const url = state.value.currentSearchEngine.url
-  const keyword = searchTerm
   // 如果网址中存在 %s，则直接替换为关键字
-  const fullUrl = replaceOrAppendKeywordToUrl(url, keyword.value)
+  const fullUrl = replaceOrAppendKeywordToUrl(url, keyword)
   handleClearSearchTerm()
   if (state.value.newWindowOpen)
     window.open(fullUrl)
@@ -106,15 +116,24 @@ const handleItemSearch = () => {
 
 function handleClearSearchTerm() {
   searchTerm.value = ''
+  loginHintVisible.value = false
   emits('itemSearch', searchTerm.value)
 }
 
+async function handleInputKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+    if (!(await ensureCloudAccess()))
+      event.preventDefault()
+  }
+}
+
+function handleLoginClick() {
+  router.push('/login')
+}
+
 onMounted(() => {
-  moduleConfig.getValueByNameFromCloud<State>('deskModuleSearchBox').then(({ code, data }) => {
-    if (code === 0)
-      state.value = data || defaultState
-    else
-      state.value = defaultState
+  moduleConfig.hydrateFromStorage().then(() => {
+    state.value = moduleConfig.getValueByNameFromLocal<State>(moduleConfigName) || defaultState
   })
 })
 </script>
@@ -126,7 +145,7 @@ onMounted(() => {
         <NAvatar :src="state.currentSearchEngine.iconSrc" style="background-color: transparent;" :size="20" />
       </div>
 
-      <input v-model="searchTerm" :placeholder="$t('deskModule.searchBox.inputPlaceholder')" @focus="onFocus" @blur="onBlur" @input="handleItemSearch">
+      <input v-model="searchTerm" :placeholder="$t('deskModule.searchBox.inputPlaceholder')" @focus="onFocus" @blur="onBlur" @input="handleItemSearch" @keydown="handleInputKeydown">
 
       <div v-if="searchTerm !== ''" class="search-box-btn-clear w-[25px] mr-[10px] flex justify-center cursor-pointer" @click="handleClearSearchTerm">
         <SvgIcon style="width: 20px;height: 20px;" icon="line-md:close-small" />
@@ -158,12 +177,19 @@ onMounted(() => {
       </div>
 
       <div class="mt-[10px]">
-        <NCheckbox v-model:checked="state.newWindowOpen" @update-checked="moduleConfig.saveToCloud(moduleConfigName, state)">
+        <NCheckbox v-model:checked="state.newWindowOpen" @update-checked="moduleConfig.saveToLocal(moduleConfigName, state)">
           <span :style="{ color: textColor }">
             {{ $t('deskModule.searchBox.openWithNewOpen') }}
           </span>
         </NCheckbox>
       </div>
+    </div>
+
+    <div v-if="loginHintVisible" class="mt-[10px] flex items-center justify-between rounded-xl bg-[rgba(42,42,42,0.72)] px-[14px] py-[10px] text-sm text-white">
+      <span>{{ $t('deskModule.searchBox.loginRequiredForAi') }}</span>
+      <button class="rounded-lg bg-white/15 px-[12px] py-[4px] text-white transition hover:bg-white/25" @click="handleLoginClick">
+        {{ $t('login.loginButton') }}
+      </button>
     </div>
   </div>
 </template>

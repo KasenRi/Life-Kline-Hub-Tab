@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { FormInst, FormRules } from 'naive-ui'
 import { NButton, NCard, NDivider, NForm, NFormItem, NInput, NSelect, useDialog, useMessage } from 'naive-ui'
-import { ref } from 'vue'
-import { useAppStore, useAuthStore, usePanelState, useUserStore } from '@/store'
+import { computed, ref } from 'vue'
+import { useAppStore, useAuthStore, useUserStore } from '@/store'
 import { languageOptions } from '@/utils/defaultData'
 import type { Language, Theme } from '@/store/modules/app/helper'
 import { logout } from '@/api'
@@ -10,13 +10,14 @@ import { RoundCardModal, SvgIcon } from '@/components/common/'
 import { updateInfo, updatePassword } from '@/api/system/user'
 import { updateLocalUserInfo } from '@/utils/cmn'
 import { t } from '@/locales'
+import { router } from '@/router'
 
 const userStore = useUserStore()
 const authStore = useAuthStore()
 const appStore = useAppStore()
-const panelState = usePanelState()
 const ms = useMessage()
 const dialog = useDialog()
+const isLoggedIn = computed(() => authStore.isLoggedIn)
 
 const languageValue = ref(appStore.language)
 const themeValue = ref(appStore.theme)
@@ -63,17 +64,26 @@ const updatePasswordModalFormRules: FormRules = {
 }
 
 async function logoutApi() {
-  await logout()
+  if (authStore.isLoggedIn) {
+    try {
+      await logout()
+    }
+    catch {
+      // Ignore network failure and clear the local session anyway.
+    }
+  }
+
   userStore.resetUserInfo()
   authStore.removeToken()
-  panelState.removeState()
-  appStore.removeToken()
   ms.success(t('settingUserInfo.logoutSuccess'))
-  // router.push({ path: '/login' })
-  location.reload()// 强制刷新一下页面
 }
 
 function handleSaveInfo() {
+  if (!authStore.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+
   updateInfo(nickName.value).then(({ code, msg }) => {
     if (code === 0) {
       updateLocalUserInfo()
@@ -86,6 +96,11 @@ function handleSaveInfo() {
 }
 
 function handleUpdatePassword(e: MouseEvent) {
+  if (!authStore.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+
   e.preventDefault()
   formRef.value?.validate((errors) => {
     if (errors) {
@@ -98,7 +113,7 @@ function handleUpdatePassword(e: MouseEvent) {
       return
     }
     updatePasswordModalState.value.loading = true
-    updatePassword(updatePasswordModalState.value.form.oldPassword, updatePasswordModalState.value.form.password).then(({ code, msg }) => {
+    updatePassword(updatePasswordModalState.value.form.oldPassword, updatePasswordModalState.value.form.password).then(({ code }) => {
       if (code === 0) {
         // 成功
         updatePasswordModalState.value.show = false
@@ -135,6 +150,10 @@ function handleChangeTheme(value: Theme) {
   appStore.setTheme(value)
   // location.reload()
 }
+
+function handleLogin() {
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -144,7 +163,7 @@ function handleChangeTheme(value: Theme) {
         <div class="text-slate-500 font-bold">
           {{ $t('common.username') }}
         </div>
-        {{ authStore.userInfo?.username }}
+        {{ authStore.userInfo?.username || $t('settingUserInfo.localMode') }}
       </div>
 
       <div class="mt-[10px]">
@@ -153,14 +172,14 @@ function handleChangeTheme(value: Theme) {
         </div>
 
         <div v-if="!isEditNickNameStatus">
-          {{ authStore.userInfo?.name }}
+          {{ authStore.userInfo?.name || $t('settingUserInfo.localMode') }}
 
-          <NButton size="small" text type="info" @click="isEditNickNameStatus = !isEditNickNameStatus">
+          <NButton v-if="isLoggedIn" size="small" text type="info" @click="isEditNickNameStatus = !isEditNickNameStatus">
             {{ $t('common.edit') }}
           </NButton>
         </div>
 
-        <div v-else class="flex items-center">
+        <div v-else-if="isLoggedIn" class="flex items-center">
           <div class="max-w-[150px]">
             <NInput v-model:value="nickName" type="text" :placeholder="$t('common.inputPlaceholder')" />
           </div>
@@ -188,8 +207,8 @@ function handleChangeTheme(value: Theme) {
         </div>
       </div>
 
-      <NDivider style="margin: 10px 0;" dashed />
-      <div>
+      <NDivider v-if="isLoggedIn" style="margin: 10px 0;" dashed />
+      <div v-if="isLoggedIn">
         <NButton size="small" text type="info" @click="updatePasswordModalState.show = !updatePasswordModalState.show">
           {{ $t('settingUserInfo.updatePassword') }}
         </NButton>
@@ -197,11 +216,18 @@ function handleChangeTheme(value: Theme) {
     </NCard>
 
     <NCard style="border-radius:10px" class="mt-[10px]" size="small">
-      <NButton size="small" text type="error" @click="handleLogout">
+      <NButton v-if="isLoggedIn" size="small" text type="error" @click="handleLogout">
         <template #icon>
           <SvgIcon icon="tabler:logout" />
         </template>
         {{ $t('settingUserInfo.logout') }}
+      </NButton>
+
+      <NButton v-else size="small" text type="info" @click="handleLogin">
+        <template #icon>
+          <SvgIcon icon="material-symbols:account-circle" />
+        </template>
+        {{ $t('login.loginButton') }}
       </NButton>
     </NCard>
 

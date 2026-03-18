@@ -3,8 +3,8 @@ import { onMounted, ref } from 'vue'
 import type { FormInst, FormRules } from 'naive-ui'
 import { NButton, NCard, NForm, NFormItem, NInput, useDialog, useMessage } from 'naive-ui'
 import { VueDraggable } from 'vue-draggable-plus'
-import { deletes, edit, getList, saveSort } from '@/api/panel/itemIconGroup'
 import { RoundCardModal, SvgIcon } from '@/components/common'
+import { deleteLocalItemGroups, getLocalItemGroups, saveLocalItemGroup, saveLocalItemGroupSort } from '@/utils/localFirst/panelData'
 import { t } from '@/locales'
 
 interface EditModalArg {
@@ -65,14 +65,9 @@ function handleSaveSort() {
       sort: i + 1,
     })
   }
-  saveSort(saveItems).then(({ code, msg }) => {
-    if (code === 0) {
-      ms.success(t('common.saveSuccess'))
-      sortStatus.value = false
-    }
-    else {
-      ms.error(`${t('common.saveFail')}:${msg}`)
-    }
+  saveLocalItemGroupSort(saveItems).then(() => {
+    ms.success(t('common.saveSuccess'))
+    sortStatus.value = false
   })
 }
 
@@ -82,14 +77,10 @@ function handleDelete(groupInfo: Panel.ItemIconGroup) {
     content: t('apps.itemGroupManage.deleteWarnText', { name: groupInfo.title }),
     positiveText: t('common.confirm'),
     negativeText: t('common.cancel'),
-    onPositiveClick: () => {
+    onPositiveClick: async () => {
       if (groupInfo.id) {
-        deletes([groupInfo.id]).then(({ code, msg }) => {
-          if (code !== 0)
-            ms.error(t('common.deleteFail'))
-          else
-            refreshList()
-        })
+        await deleteLocalItemGroups([groupInfo.id])
+        refreshList()
       }
     },
 
@@ -99,10 +90,7 @@ function handleDelete(groupInfo: Panel.ItemIconGroup) {
 function handleSaveGroup() {
   formRef.value?.validate((errors) => {
     if (!errors) {
-      edit(editModalArg.value.model).then(({ code, msg }) => {
-        if (code !== 0)
-          ms.error(msg)
-
+      saveLocalItemGroup(editModalArg.value.model).then(() => {
         refreshList()
         editModalArg.value.show = false
         editModalArg.value.model = { ...defaultMNodal }
@@ -113,8 +101,8 @@ function handleSaveGroup() {
 }
 
 function refreshList() {
-  getList<Common.ListResponse<Panel.ItemIconGroup[]>>().then(({ code, data }) => {
-    groups.value = data.list
+  getLocalItemGroups().then((data) => {
+    groups.value = data
   })
 }
 

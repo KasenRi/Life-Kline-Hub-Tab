@@ -1,4 +1,4 @@
-import { ss } from '@/utils/storage'
+import { getExtensionStorageValue, removeExtensionStorageValue, setExtensionStorageValue, ss } from '@/utils/storage'
 import { PanelPanelConfigStyleEnum, PanelStateNetworkModeEnum } from '@/enums'
 import defaultBackground from '@/assets/defaultBackground.webp'
 const LOCAL_NAME = 'panelStorage'
@@ -47,10 +47,17 @@ export function getLocalState(): Panel.State {
   return { ...defaultState(), ...localState }
 }
 
+export async function getStoredState(): Promise<Panel.State> {
+  const localState = await getExtensionStorageValue<Panel.State>(LOCAL_NAME)
+  return { ...defaultState(), ...localState }
+}
+
 export function setLocalState(state: Panel.State) {
   ss.set(LOCAL_NAME, state)
+  void setExtensionStorageValue(LOCAL_NAME, state)
 }
 
 export function removeLocalState() {
   ss.remove(LOCAL_NAME)
+  void removeExtensionStorageValue(LOCAL_NAME)
 }

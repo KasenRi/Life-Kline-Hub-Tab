@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { defaultState, defaultStatePanelConfig, getLocalState, removeLocalState, setLocalState } from './helper'
+import { defaultState, defaultStatePanelConfig, getLocalState, getStoredState, removeLocalState, setLocalState } from './helper'
 import { router } from '@/router'
 import type { PanelStateNetworkModeEnum } from '@/enums'
 import { get as getUserConfig } from '@/api/panel/userConfig'
@@ -26,19 +26,25 @@ export const usePanelState = defineStore('panel', {
       this.recordState()
     },
 
+    async hydrateFromStorage() {
+      this.$state = await getStoredState()
+      this.recordState()
+    },
+
     // 获取云端（搭建的服务器）的面板配置
-    updatePanelConfigByCloud() {
-      getUserConfig<Panel.userConfig>().then((res) => {
-        if (res.code === 0)
-          this.panelConfig = { ...defaultStatePanelConfig(), ...res.data.panel }
-        else
-          this.resetPanelConfig() // 重置恢复默认
+    async updatePanelConfigByCloud() {
+      const res = await getUserConfig<Panel.userConfig>()
+      if (res.code === 0) {
+        this.panelConfig = { ...this.panelConfig, ...defaultStatePanelConfig(), ...res.data.panel }
         this.recordState()
-      })
+      }
+
+      return res
     },
 
     resetPanelConfig() {
       this.panelConfig = defaultStatePanelConfig()
+      this.recordState()
     },
 
     // async refreshSpaceNoteList(spaceId: string) {

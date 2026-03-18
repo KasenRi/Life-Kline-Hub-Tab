@@ -3,7 +3,6 @@ import request from './axios'
 import { apiRespErrMsg, message } from './apiMessage'
 import { t } from '@/locales'
 import { useAppStore, useAuthStore } from '@/store'
-import { router } from '@/router'
 
 let loginMessageShow = false
 export interface HttpOption {
@@ -15,6 +14,8 @@ export interface HttpOption {
   signal?: GenericAbortSignal
   beforeRequest?: () => void
   afterRequest?: () => void
+  silentAuth?: boolean
+  silentError?: boolean
 }
 
 export interface Response<T = any> {
@@ -26,7 +27,7 @@ export interface Response<T = any> {
 }
 
 function http<T = any>(
-  { url, data, method, headers, onDownloadProgress, signal, beforeRequest, afterRequest }: HttpOption,
+  { url, data, method, headers, onDownloadProgress, signal, beforeRequest, afterRequest, silentAuth, silentError }: HttpOption,
 ) {
   const authStore = useAuthStore()
   const appStore = useAppStore()
@@ -36,24 +37,21 @@ function http<T = any>(
 
     if (res.data.code === 1001) {
       // 避免重复弹窗
-      if (loginMessageShow === false) {
+      if (!silentAuth && loginMessageShow === false) {
         loginMessageShow = true
         message.warning(t('api.loginExpires'), {
-        // message.warning('登录过期', {
           onLeave() {
             loginMessageShow = false
           },
         })
       }
 
-      router.push({ path: '/login' })
-      authStore.removeToken()
+      authStore.setLoggedOut()
       return res.data
     }
 
     if (res.data.code === 1000) {
-      router.push({ path: '/login' })
-      authStore.removeToken()
+      authStore.setLoggedOut()
       return res.data
     }
 
@@ -77,10 +75,12 @@ function http<T = any>(
 
   const failHandler = (error: Response<Error>) => {
     afterRequest?.()
-    message.error(t('common.networkError'), {
-      duration: 50000,
-      closable: true,
-    })
+    if (!silentError) {
+      message.error(t('common.networkError'), {
+        duration: 50000,
+        closable: true,
+      })
+    }
     throw new Error(error?.msg || 'Error')
   }
 
@@ -100,7 +100,7 @@ function http<T = any>(
 }
 
 export function get<T = any>(
-  { url, data, method = 'GET', onDownloadProgress, signal, beforeRequest, afterRequest }: HttpOption,
+  { url, data, method = 'GET', onDownloadProgress, signal, beforeRequest, afterRequest, silentAuth, silentError }: HttpOption,
 ): Promise<Response<T>> {
   return http<T>({
     url,
@@ -110,11 +110,13 @@ export function get<T = any>(
     signal,
     beforeRequest,
     afterRequest,
+    silentAuth,
+    silentError,
   })
 }
 
 export function post<T = any>(
-  { url, data, method = 'POST', headers, onDownloadProgress, signal, beforeRequest, afterRequest }: HttpOption,
+  { url, data, method = 'POST', headers, onDownloadProgress, signal, beforeRequest, afterRequest, silentAuth, silentError }: HttpOption,
 ): Promise<Response<T>> {
   return http<T>({
     url,
@@ -125,6 +127,8 @@ export function post<T = any>(
     signal,
     beforeRequest,
     afterRequest,
+    silentAuth,
+    silentError,
   })
 }
 

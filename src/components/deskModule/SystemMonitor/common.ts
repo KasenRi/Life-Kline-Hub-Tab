@@ -5,13 +5,15 @@ const modelName = 'systemMonitor'
 const moduleConfig = useModuleConfig()
 
 export async function saveAll(value: MonitorData[]) {
-  return await moduleConfig.saveToCloud(modelName, { list: value })
+  moduleConfig.saveToLocal(modelName, { list: value })
+  return { code: 0, data: { list: value }, msg: 'OK' }
 }
 
 export async function getAll(): Promise< MonitorData[]> {
-  const res = await moduleConfig.getValueByNameFromCloud<{ list: MonitorData[] }>(modelName)
-  if (res.code === 0 && res.data && res.data.list)
-    return res.data.list
+  await moduleConfig.hydrateFromStorage()
+  const data = moduleConfig.getValueByNameFromLocal<{ list: MonitorData[] }>(modelName)
+  if (data && data.list)
+    return data.list
   return []
 }
 

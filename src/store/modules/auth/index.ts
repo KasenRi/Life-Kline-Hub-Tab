@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getStorage, removeToken as hRemoveToken, setStorage } from './helper'
+import { getStorage, getStoredStorage, removeToken as hRemoveToken, setStorage } from './helper'
 import { VisitMode } from '@/enums/auth'
 
 // interface SessionResponse {
@@ -16,19 +16,29 @@ export interface AuthState {
 const defaultState: AuthState = {
   token: null,
   userInfo: null,
-  visitMode: VisitMode.VISIT_MODE_LOGIN,
+  visitMode: VisitMode.VISIT_MODE_PUBLIC,
 }
 
 export const useAuthStore = defineStore('auth-store', {
   state: (): AuthState => getStorage() || defaultState,
 
+  getters: {
+    hasToken: state => Boolean(state.token),
+    isLoggedIn: state => Boolean(state.token) && state.visitMode === VisitMode.VISIT_MODE_LOGIN,
+  },
+
   actions: {
-    setToken(token: string) {
+    async hydrateFromStorage() {
+      this.$state = (await getStoredStorage()) || { ...defaultState }
+      this.saveStorage()
+    },
+
+    setToken(token: string | null) {
       this.token = token
       this.saveStorage()
     },
 
-    setUserInfo(userInfo: User.Info) {
+    setUserInfo(userInfo: User.Info | null) {
       this.userInfo = userInfo
       this.saveStorage()
     },
@@ -42,8 +52,20 @@ export const useAuthStore = defineStore('auth-store', {
       setStorage(this.$state)
     },
 
+    applyLogin(userInfo: User.Info, token: string) {
+      this.token = token
+      this.userInfo = userInfo
+      this.visitMode = VisitMode.VISIT_MODE_LOGIN
+      this.saveStorage()
+    },
+
+    setLoggedOut() {
+      this.$state = { ...defaultState }
+      this.saveStorage()
+    },
+
     removeToken() {
-      this.$state = defaultState
+      this.$state = { ...defaultState }
       hRemoveToken()
     },
   },

@@ -3,12 +3,17 @@ import { ref, watch } from 'vue'
 import type { UploadFileInfo } from 'naive-ui'
 import { NButton, NCard, NColorPicker, NGrid, NGridItem, NInput, NInputGroup, NPopconfirm, NSelect, NSlider, NSwitch, NUpload, NUploadDragger, useMessage } from 'naive-ui'
 import { useAuthStore, usePanelState } from '@/store'
-import { set as setUserConfig } from '@/api/panel/userConfig'
+import { useModuleConfig } from '@/store/modules'
 import { PanelPanelConfigStyleEnum } from '@/enums/panel'
 import { t } from '@/locales'
+import { router } from '@/router'
+import { pullCloudLayoutToLocal, pushLocalLayoutToCloud } from '@/utils/localFirst/cloudSync'
+import { saveLocalAsset } from '@/utils/localFirst/panelData'
+import { updateLocalUserInfo } from '@/utils/cmn'
 
 const authStore = useAuthStore()
 const panelState = usePanelState()
+const moduleConfigStore = useModuleConfig()
 const ms = useMessage()
 const showWallpaperInput = ref(false)
 
@@ -43,35 +48,85 @@ watch(panelState.panelConfig, () => {
     setTimeout(() => {
       panelState.recordState()// 本地记录
       isSaveing.value = false
-      uploadCloud()
     }, 1000)
   }
 })
 
-function handleUploadBackgroundFinish({
-  file,
-  event,
-}: {
-  file: UploadFileInfo
-  event?: ProgressEvent
-}) {
-  const res = JSON.parse((event?.target as XMLHttpRequest).response)
-  panelState.panelConfig.backgroundImageSrc = res.data.imageUrl
-  return file
+async function handleWallpaperFileChange(options: { file: UploadFileInfo }) {
+  if (!options.file.file)
+    return
+
+  const asset = await saveLocalAsset(options.file.file)
+  panelState.panelConfig.backgroundImageSrc = asset.src
+  panelState.recordState()
 }
 
-function uploadCloud() {
-  setUserConfig({ panel: panelState.panelConfig }).then((res) => {
-    if (res.code === 0)
-      ms.success(t('apps.baseSettings.configSaved'))
-    else
-      ms.error(t('apps.baseSettings.configFailed', { message: res.msg }))
-  })
+async function uploadCloud() {
+  const valid = await updateLocalUserInfo()
+  if (!valid) {
+    ms.warning(t('apps.baseSettings.loginToSync'))
+    router.push('/login')
+    return
+  }
+
+  await moduleConfigStore.hydrateFromStorage()
+  const moduleConfigNames = ['deskModuleSearchBox', 'systemMonitor']
+  const res = await pushLocalLayoutToCloud(panelState.panelConfig)
+  if (res.code !== 0) {
+    ms.error(t('apps.baseSettings.configFailed', { message: res.msg }))
+    return
+  }
+
+  for (const name of moduleConfigNames) {
+    const value = moduleConfigStore.getValueByNameFromLocal(name)
+    if (value !== null) {
+      const moduleRes = await moduleConfigStore.saveToCloud(name, value)
+      if (moduleRes.code !== 0) {
+        ms.error(t('apps.baseSettings.configFailed', { message: moduleRes.msg }))
+        return
+      }
+    }
+  }
+
+  ms.success(t('apps.baseSettings.configSaved'))
+}
+
+async function pullCloud() {
+  const valid = await updateLocalUserInfo()
+  if (!valid) {
+    ms.warning(t('apps.baseSettings.loginToSync'))
+    router.push('/login')
+    return
+  }
+
+  await moduleConfigStore.hydrateFromStorage()
+  const moduleConfigNames = ['deskModuleSearchBox', 'systemMonitor']
+  const res = await pullCloudLayoutToLocal()
+  if (res.code !== 0) {
+    ms.error(t('apps.baseSettings.configFailed', { message: res.msg }))
+    return
+  }
+
+  panelState.panelConfig = { ...panelState.panelConfig, ...res.data.panel }
+  panelState.recordState()
+
+  for (const name of moduleConfigNames) {
+    const moduleRes = await moduleConfigStore.getValueByNameFromCloud(name)
+    if (moduleRes.code === 0 && moduleRes.data)
+      moduleConfigStore.saveToLocal(name, moduleRes.data)
+  }
+
+  ms.success(t('apps.baseSettings.cloudPulled'))
+  location.reload()
 }
 
 function resetPanelConfig() {
   panelState.resetPanelConfig()
-  uploadCloud()
+}
+
+function handleSaveLocal() {
+  panelState.recordState()
+  ms.success(t('apps.baseSettings.configSaved'))
 }
 </script>
 
@@ -191,14 +246,10 @@ function resetPanelConfig() {
         {{ $t('apps.baseSettings.wallpaper') }}
       </div>
       <NUpload
-        action="/api/file/uploadImg"
+        :default-upload="false"
         :show-file-list="false"
-        name="imgfile"
-        :headers="{
-          token: authStore.token as string,
-        }"
         :directory-dnd="true"
-        @finish="handleUploadBackgroundFinish"
+        @change="handleWallpaperFileChange"
       >
         <NUploadDragger style="width: 100%;">
           <div
@@ -301,6 +352,18 @@ function resetPanelConfig() {
       </NPopconfirm>
 
       <NButton size="small" quaternary type="success" class="ml-[10px]" @click="uploadCloud">
+        {{ $t('apps.baseSettings.cloudSync') }}
+      </NButton>
+
+      <NButton size="small" quaternary type="success" class="ml-[10px]" @click="pullCloud">
+        {{ $t('apps.baseSettings.pullFromCloud') }}
+      </NButton>
+
+      <NButton v-if="!authStore.isLoggedIn" size="small" quaternary class="ml-[10px]" @click="router.push('/login')">
+        {{ $t('login.loginButton') }}
+      </NButton>
+
+      <NButton size="small" quaternary type="info" class="ml-[10px]" @click="handleSaveLocal">
         {{ $t('common.save') }}
       </NButton>
     </NCard>

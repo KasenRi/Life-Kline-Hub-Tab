@@ -1,11 +1,27 @@
 import { defineStore } from 'pinia'
 import type { ModuleConfigState } from './helper'
-import { getLocalState, setLocalState } from './helper'
+import { getLocalState, getStoredState, setLocalState } from './helper'
 import { getValueByName, save } from '@/api/system/moduleConfig'
 
 export const useModuleConfig = defineStore('module-config-store', {
   state: (): ModuleConfigState => getLocalState(),
   actions: {
+    async hydrateFromStorage() {
+      this.$state = await getStoredState()
+      this.recordState()
+    },
+
+    getValueByNameFromLocal<T>(name: string): T | null {
+      const moduleName = `module-${name}`
+      return this.$state[moduleName] ?? null
+    },
+
+    saveToLocal(name: string, value: any) {
+      const moduleName = `module-${name}`
+      this.$state[moduleName] = value
+      this.recordState()
+      return value
+    },
 
     // 保存
     // save(name: string, value: any) {
@@ -29,12 +45,16 @@ export const useModuleConfig = defineStore('module-config-store', {
     // 获取值
     async getValueByNameFromCloud<T>(name: string) {
       const moduleName = `module-${name}`
-      return await getValueByName<T>(moduleName)
+      const res = await getValueByName<T>(moduleName)
+      if (res.code === 0)
+        this.saveToLocal(name, res.data)
+      return res
     },
 
     // 保存到网络
     async saveToCloud(name: string, value: any) {
       const moduleName = `module-${name}`
+      this.saveToLocal(name, value)
       // 保存至网络
       return save(moduleName, value)
     },

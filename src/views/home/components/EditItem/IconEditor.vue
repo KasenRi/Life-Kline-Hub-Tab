@@ -3,8 +3,7 @@ import { NButton, NColorPicker, NInput, NRadio, NUpload } from 'naive-ui'
 import type { UploadFileInfo } from 'naive-ui'
 import { computed, defineProps } from 'vue'
 import { ItemIcon } from '@/components/common'
-import { useAuthStore } from '@/store'
-import { apiRespErrMsg } from '@/utils/request/apiMessage'
+import { saveLocalAsset } from '@/utils/localFirst/panelData'
 
 const props = defineProps<{
   itemIcon: Panel.ItemIcon | null
@@ -12,7 +11,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:itemIcon', visible: Panel.ItemIcon): void // 定义修改父组件（prop内）的值的事件
 }>()
-const authStore = useAuthStore()
 
 // 默认图标背景色
 const defautSwatchesBackground = [
@@ -60,25 +58,13 @@ function handleResetBackgroundColor() {
   handleChange()
 }
 
-const handleUploadFinish = ({
-  file,
-  event,
-}: {
-  file: UploadFileInfo
-  event?: ProgressEvent
-}) => {
-  const res = JSON.parse((event?.target as XMLHttpRequest).response)
-  if (res.code === 0) {
-    const imageUrl = res.data.imageUrl
-    itemIconInfo.value.src = imageUrl
-    emit('update:itemIcon', itemIconInfo.value || null)
-  }
-  else {
-    apiRespErrMsg(res)
-    // ms.error(`${t('common.uploadFail')}:${res.msg}`)
-  }
+async function handleFileChange(options: { file: UploadFileInfo }) {
+  if (!options.file.file)
+    return
 
-  return file
+  const asset = await saveLocalAsset(options.file.file)
+  itemIconInfo.value.src = asset.src
+  emit('update:itemIcon', itemIconInfo.value || null)
 }
 </script>
 
@@ -141,13 +127,9 @@ const handleUploadFinish = ({
           <div v-if="itemIconInfo.itemType === 2">
             <NInput v-model:value="itemIconInfo.src" class="mb-[5px] w-full" size="small" type="text" :placeholder="$t('iconItem.inputIconUrlOrUpload')" @input="handleChange" />
             <NUpload
-              action="/api/file/uploadImg"
+              :default-upload="false"
               :show-file-list="false"
-              name="imgfile"
-              :headers="{
-                token: authStore.token as string,
-              }"
-              @finish="handleUploadFinish"
+              @change="handleFileChange"
             >
               <NButton size="small">
                 {{ $t('iconItem.selectUpload') }}

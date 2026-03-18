@@ -6,14 +6,8 @@ import { RoundCardModal, SvgIcon } from '@/components/common'
 import type { IconGroup, ImportJsonResult } from '@/utils/jsonImportExport'
 import { ConfigVersionLowError, FormatError, exportJson, importJsonString } from '@/utils/jsonImportExport'
 import { get as getAbout } from '@/api/system/about'
-import { edit as addGroup, getList as getGroupList } from '@/api/panel/itemIconGroup'
-import { addMultiple as addMultipleIcons, getListByGroupId } from '@/api/panel/itemIcon'
-
 import { t } from '@/locales'
-
-interface ItemGroup extends Panel.ItemIconGroup {
-  items?: Panel.ItemInfo[]
-}
+import { addLocalItems, getLocalItemGroups, getLocalItemsByGroupId, saveLocalItemGroup } from '@/utils/localFirst/panelData'
 
 const ms = useMessage()
 
@@ -44,46 +38,35 @@ async function importIcons(): Promise<string | null> {
       const element = groups[i]
 
       // 创建组得到组id
-      const createGroupResponse = await addGroup<Panel.ItemIconGroup>({
+      const createGroupResponse = await saveLocalItemGroup({
         title: element.title,
         sort: element.sort,
       })
+      const groupId = createGroupResponse.id
 
-      if (createGroupResponse.code === 0) {
-        const groupId = createGroupResponse.data?.id
+      if (groupId) {
+        let addIcons: Panel.ItemInfo[] = []
 
-        if (groupId) {
-          let addIcons: Panel.ItemInfo[] = []
+        // 批量添加子项
+        for (let iconI = 0; iconI < element.children.length; iconI++) {
+          const iconElement = element.children[iconI]
 
-          // 批量添加子项
-          for (let iconI = 0; iconI < element.children.length; iconI++) {
-            const iconElement = element.children[iconI]
+          addIcons.push({
+            title: iconElement.title,
+            sort: iconElement.sort,
+            icon: iconElement.icon,
+            url: iconElement.url,
+            lanUrl: iconElement.lanUrl,
+            description: iconElement.description,
+            openMethod: iconElement.openMethod,
+            itemIconGroupId: groupId,
+          })
 
-            addIcons.push({
-              title: iconElement.title,
-              sort: iconElement.sort,
-              icon: iconElement.icon,
-              url: iconElement.url,
-              lanUrl: iconElement.lanUrl,
-              description: iconElement.description,
-              openMethod: iconElement.openMethod,
-              itemIconGroupId: groupId,
-            })
-
-            // 每 batchSize 个添加一次
-            if (addIcons.length === batchSize || iconI === element.children.length - 1) {
-              const response = await addMultipleIcons(addIcons)
-
-              if (response.code !== 0)
-                return response.msg
-
-              addIcons = []
-            }
+          if (addIcons.length === batchSize || iconI === element.children.length - 1) {
+            await addLocalItems(addIcons)
+            addIcons = []
           }
         }
-      }
-      else {
-        return createGroupResponse.msg
       }
     }
 
@@ -102,41 +85,33 @@ async function exportIcons(): Promise<IconGroup[]> {
   const iconGroups: IconGroup[] = []
 
   // 获取组数据
-  const { code, data } = await getGroupList<Common.ListResponse<ItemGroup[]>>()
+  const data = await getLocalItemGroups()
 
-  if (code === 0) {
-    // 使用 Promise.all 等待所有异步操作完成
-    await Promise.all(data.list.map(async (element) => {
-      const group: IconGroup = {
-        title: element.title as string,
-        sort: element.sort as 0,
-        children: [],
-      }
+  await Promise.all(data.map(async (element) => {
+    const group: IconGroup = {
+      title: element.title as string,
+      sort: element.sort as 0,
+      children: [],
+    }
 
-      const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(element.id)
+    const groupItems = await getLocalItemsByGroupId(element.id)
 
-      if (res.code === 0) {
-        for (const iconElement of res.data.list) {
-          group.children.push({
-            icon: iconElement.icon,
-            sort: iconElement.sort || 99999,
-            title: iconElement.title,
-            url: iconElement.url,
-            lanUrl: iconElement.lanUrl || '',
-            description: iconElement.description || '',
-            openMethod: iconElement.openMethod || 1,
-          })
-        }
-      }
+    for (const iconElement of groupItems) {
+      group.children.push({
+        icon: iconElement.icon,
+        sort: iconElement.sort || 99999,
+        title: iconElement.title,
+        url: iconElement.url,
+        lanUrl: iconElement.lanUrl || '',
+        description: iconElement.description || '',
+        openMethod: iconElement.openMethod || 1,
+      })
+    }
 
-      iconGroups.push(group)
-    }))
+    iconGroups.push(group)
+  }))
 
-    return iconGroups
-  }
-  else {
-    return []
-  }
+  return iconGroups
 }
 
 onMounted(() => {

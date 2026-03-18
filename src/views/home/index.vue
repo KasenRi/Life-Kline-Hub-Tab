@@ -5,13 +5,11 @@ import { nextTick, onMounted, ref } from 'vue'
 import { AppIcon, AppStarter, EditItem } from './components'
 import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
-import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
-import { getList as getGroupList } from '@/api/panel/itemIconGroup'
 
-import { setTitle, updateLocalUserInfo } from '@/utils/cmn'
+import { setTitle } from '@/utils/cmn'
+import { deleteLocalItems, getLocalItemGroups, getLocalItemsByGroupId, saveLocalItemSort } from '@/utils/localFirst/panelData'
 import { useAuthStore, usePanelState } from '@/store'
 import { PanelPanelConfigStyleEnum, PanelStateNetworkModeEnum } from '@/enums'
-import { VisitMode } from '@/enums/auth'
 import { router } from '@/router'
 import { t } from '@/locales'
 
@@ -84,31 +82,31 @@ function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
   openPage(item.openMethod, jumpUrl, item.title)
 }
 
-function handWindowIframeIdLoad(payload: Event) {
+function handWindowIframeIdLoad(_payload: Event) {
   windowIframeIsLoad.value = false
 }
 
-function getList() {
-  // 获取组数据
-  getGroupList<Common.ListResponse<ItemGroup[]>>().then(({ code, data, msg }) => {
-    if (code === 0)
-      items.value = data.list
-    for (let i = 0; i < data.list.length; i++) {
-      const element = data.list[i]
-      if (element.id)
-        updateItemIconGroupByNet(i, element.id)
-    }
-    filterItems.value = items.value
-    // console.log(items)
-  })
+async function getList() {
+  const groups = await getLocalItemGroups()
+  items.value = groups.map(group => ({
+    ...group,
+    hoverStatus: false,
+    sortStatus: false,
+    items: [],
+  }))
+
+  for (let i = 0; i < items.value.length; i++) {
+    const element = items.value[i]
+    if (element.id)
+      await updateItemIconGroupByNet(i, element.id)
+  }
+
+  filterItems.value = items.value
 }
 
-// 从后端获取组下面的图标
-function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGroupId: number) {
-  getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(itemIconGroupId).then((res) => {
-    if (res.code === 0)
-      items.value[itemIconGroupIndex].items = res.data.list
-  })
+// 从本地仓库获取组下面的图标
+async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGroupId: number) {
+  items.value[itemIconGroupIndex].items = await getLocalItemsByGroupId(itemIconGroupId)
 }
 
 function handleRightMenuSelect(key: string | number) {
@@ -139,16 +137,10 @@ function handleRightMenuSelect(key: string | number) {
         content: t('common.deleteConfirmByName', { name: currentRightSelectItem.value?.title }),
         positiveText: t('common.confirm'),
         negativeText: t('common.cancel'),
-        onPositiveClick: () => {
-          deletes([currentRightSelectItem.value?.id as number]).then(({ code, msg }) => {
-            if (code === 0) {
-              ms.success(t('common.deleteSuccess'))
-              getList()
-            }
-            else {
-              ms.error(`${t('common.deleteFail')}:${msg}`)
-            }
-          })
+        onPositiveClick: async () => {
+          await deleteLocalItems([currentRightSelectItem.value?.id as number])
+          ms.success(t('common.deleteSuccess'))
+          await getList()
         },
       })
 
@@ -177,7 +169,7 @@ function onClickoutside() {
   dropdownShow.value = false
 }
 
-function handleEditSuccess(item: Panel.ItemInfo) {
+function handleEditSuccess(_item: Panel.ItemInfo) {
   getList()
 }
 
@@ -207,14 +199,9 @@ function handleSaveSort(itemGroup: ItemGroup) {
       })
     }
 
-    saveSort({ itemIconGroupId: itemGroup.id as number, sortItems: saveItems }).then(({ code, msg }) => {
-      if (code === 0) {
-        ms.success(t('common.saveSuccess'))
-        itemGroup.sortStatus = false
-      }
-      else {
-        ms.error(`${t('common.saveFail')}:${msg}`)
-      }
+    saveLocalItemSort({ itemIconGroupId: itemGroup.id as number, sortItems: saveItems }).then(() => {
+      ms.success(t('common.saveSuccess'))
+      itemGroup.sortStatus = false
     })
   }
 }
@@ -242,26 +229,20 @@ function getDropdownMenuOptions() {
     })
   }
 
-  if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
-    dropdownMenuOptions.push({
-      label: t('common.edit'),
-      key: 'edit',
-    }, {
-      label: t('common.delete'),
-      key: 'delete',
-    })
-  }
+  dropdownMenuOptions.push({
+    label: t('common.edit'),
+    key: 'edit',
+  }, {
+    label: t('common.delete'),
+    key: 'delete',
+  })
 
   return dropdownMenuOptions
 }
 
-onMounted(() => {
-  // 更新用户信息
-  updateLocalUserInfo()
-  getList()
-
-  // 更新同步云端配置
-  panelState.updatePanelConfigByCloud()
+onMounted(async () => {
+  await panelState.hydrateFromStorage()
+  await getList()
 
   // 设置标题
   if (panelState.panelConfig.logoText)
@@ -358,7 +339,7 @@ function handleAddItem(itemIconGroupId?: number) {
             </div>
           </div>
           <div v-if="panelState.panelConfig.searchBoxShow" class="flex mt-[20px] mx-auto sm:w-full lg:w-[80%]">
-            <SearchBox @itemSearch="itemFrontEndSearch" />
+            <SearchBox @item-search="itemFrontEndSearch" />
           </div>
         </div>
 
@@ -366,13 +347,11 @@ function handleAddItem(itemIconGroupId?: number) {
         <div :style="{ marginLeft: `${panelState.panelConfig.marginX}px`, marginRight: `${panelState.panelConfig.marginX}px` }">
           <!-- 系统监控状态 -->
           <div
-            v-if="panelState.panelConfig.systemMonitorShow
-              && ((panelState.panelConfig.systemMonitorPublicVisitModeShow && authStore.visitMode === VisitMode.VISIT_MODE_PUBLIC)
-                || authStore.visitMode === VisitMode.VISIT_MODE_LOGIN)"
+            v-if="panelState.panelConfig.systemMonitorShow"
             class="flex mx-auto"
           >
             <SystemMonitor
-              :allow-edit="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN"
+              :allow-edit="true"
               :show-title="panelState.panelConfig.systemMonitorShowTitle"
             />
           </div>
@@ -391,7 +370,6 @@ function handleAddItem(itemIconGroupId?: number) {
                 {{ itemGroup.title }}
               </span>
               <div
-                v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN"
                 class="group-buttons ml-2 delay-100 transition-opacity flex"
                 :class="itemGroup.hoverStatus ? 'opacity-100' : 'opacity-0'"
               >
@@ -524,13 +502,13 @@ function handleAddItem(itemIconGroupId?: number) {
           </template>
         </NButton>
 
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" @click="settingModalShow = !settingModalShow">
+        <NButton color="#2a2a2a6b" @click="settingModalShow = !settingModalShow">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="majesticons-applications" />
           </template>
         </NButton>
 
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_PUBLIC" color="#2a2a2a6b" :title="$t('panelHome.goToLogin')" @click="router.push('/login')">
+        <NButton v-if="!authStore.isLoggedIn" color="#2a2a2a6b" :title="$t('panelHome.goToLogin')" @click="router.push('/login')">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="material-symbols:account-circle" />
           </template>

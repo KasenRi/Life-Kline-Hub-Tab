@@ -1,4 +1,4 @@
-import { ss } from '@/utils/storage'
+import { getExtensionStorageValue, setExtensionStorageValue, ss } from '@/utils/storage'
 // import userDefaultAvatar from '@/assets/userDefaultAvatar.png'
 
 const LOCAL_NAME = 'moduleConfig'
@@ -17,6 +17,11 @@ export function getLocalState(): ModuleConfigState {
   return { ...localSetting }
 }
 
+export async function getStoredState(): Promise<ModuleConfigState> {
+  return { ...((await getExtensionStorageValue<ModuleConfigState>(LOCAL_NAME)) ?? {}) }
+}
+
 export function setLocalState(setting: ModuleConfigState): void {
   ss.set(LOCAL_NAME, setting)
+  void setExtensionStorageValue(LOCAL_NAME, setting)
 }

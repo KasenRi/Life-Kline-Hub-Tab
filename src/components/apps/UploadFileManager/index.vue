@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { NAlert, NButton, NButtonGroup, NCard, NEllipsis, NGrid, NGridItem, NImage, NImageGroup, NSpin, useDialog, useMessage } from 'naive-ui'
 import { onMounted, ref } from 'vue'
-import { deletes, getList } from '@/api/system/file'
-import { set as savePanelConfig } from '@/api/panel/userConfig'
 import { RoundCardModal, SvgIcon } from '@/components/common'
+import { deleteLocalAssets, getLocalAssets } from '@/utils/localFirst/panelData'
 import { copyToClipboard, timeFormat } from '@/utils/cmn'
 import { t } from '@/locales'
 import { usePanelState } from '@/store'
@@ -26,8 +25,7 @@ const infoModalState = ref<InfoModalState>({
 
 async function getFileList() {
   loading.value = true
-  const { data } = await getList<Common.ListResponse<File.Info[]>>()
-  imageList.value = data.list
+  imageList.value = await getLocalAssets()
   loading.value = false
 }
 
@@ -54,16 +52,11 @@ function handleDelete(id: number) {
 
 async function deletesImges(id: number) {
   try {
-    const { code, msg } = await deletes([id])
-    if (code === 0) {
-      getFileList()
-      ms.success(t('common.success'))
-    }
-    else {
-      ms.error(`${t('common.failed')}:${msg}`)
-    }
+    await deleteLocalAssets([id])
+    getFileList()
+    ms.success(t('common.success'))
   }
-  catch (error) {
+  catch {
     ms.error(t('common.failed'))
   }
 }
@@ -75,7 +68,7 @@ function handleInfoClick(fileInfo: File.Info) {
 
 function handleSetWallpaper(imgSrc: string) {
   panelStore.panelConfig.backgroundImageSrc = imgSrc
-  savePanelConfig({ panel: panelStore.panelConfig })
+  panelStore.recordState()
 }
 
 onMounted(() => {

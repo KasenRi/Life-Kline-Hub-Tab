@@ -55,6 +55,8 @@
       "bottomMargin": "下边距",
       "clock": "时钟组件",
       "clockSecondShow": "显示秒",
+      "cloudPulled": "已从云端拉取并覆盖本地配置",
+      "cloudSync": "云同步",
       "configFailed": "配置保存失败,{message}",
       "configSaved": "配置已保存",
       "contentArea": "内容区域",
@@ -64,10 +66,12 @@
       "hideDescription": "隐藏描述信息",
       "hideTitle": "隐藏标题",
       "leftRightMargin": "左右边距",
+      "loginToSync": "云同步需要登录后才能使用",
       "mask": "遮罩",
       "maxWidth": "最大宽度",
       "netModeChangeButtonShow": "显示网络模式切换按钮",
       "publicVisitModeShow": "公开模式允许显示",
+      "pullFromCloud": "拉取云端",
       "resetWarnText": "确定要重置这些样式吗？",
       "searchBar": "搜索栏组件",
       "searchBarSearchItem": "允许搜索栏搜索项目",
@@ -200,6 +204,7 @@
     },
     "searchBox": {
       "inputPlaceholder": "请输入搜索内容",
+      "loginRequiredForAi": "开启 AI 辅助与云端快照，请先登录",
       "openWithNewOpen": "新窗口打开"
     },
     "systemMonitor": {
@@ -254,6 +259,7 @@
     "confirmLogoutText": "你确定要退出登录吗？",
     "confirmPassword": "确认新密码",
     "confirmPasswordInconsistentMsg": "两次密码不一致",
+    "localMode": "本地模式",
     "logout": "退出登录",
     "logoutSuccess": "您已经安全退出，期待与你再次相见！",
     "newPassword": "新密码",

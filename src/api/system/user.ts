@@ -1,3 +1,4 @@
+import type { HttpOption } from '@/utils/request'
 import { post } from '@/utils/request'
 
 // export function getInfo<T>() {
@@ -6,9 +7,10 @@ import { post } from '@/utils/request'
 //   })
 // }
 
-export function getAuthInfo<T>() {
+export function getAuthInfo<T>(options: Pick<HttpOption, 'silentAuth' | 'silentError'> = {}) {
   return post<T>({
     url: '/user/getAuthInfo',
+    ...options,
   })
 }
 

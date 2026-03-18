@@ -1,5 +1,5 @@
 import type { AuthState } from './index'
-import { ss } from '@/utils/storage'
+import { getExtensionStorageValue, removeExtensionStorageValue, setExtensionStorageValue, ss } from '@/utils/storage'
 
 const LOCAL_NAME = 'AUTH_TOKEN'
 
@@ -20,14 +20,20 @@ const LOCAL_NAME = 'AUTH_TOKEN'
 // }
 
 export function setStorage(state: AuthState) {
-  return ss.set(LOCAL_NAME, state)
+  ss.set(LOCAL_NAME, state)
+  setExtensionStorageValue(LOCAL_NAME, state)
 }
 
 export function getStorage() {
   return ss.get(LOCAL_NAME)
 }
 
+export async function getStoredStorage() {
+  return await getExtensionStorageValue<AuthState>(LOCAL_NAME)
+}
+
 export function removeToken() {
   // ss.clear()
-  return ss.remove(LOCAL_NAME)
+  ss.remove(LOCAL_NAME)
+  removeExtensionStorageValue(LOCAL_NAME)
 }
