@@ -13,12 +13,7 @@ export interface AppState {
 }
 
 export function defaultSetting(): AppState {
-  const lan = (navigator.language).toLowerCase()
-  let language: Language = 'en-US'
-  if (lan.includes('zh'))
-    language = 'zh-CN'
-
-  return { siderCollapsed: false, theme: 'auto', language }
+  return { siderCollapsed: false, theme: 'auto', language: 'zh-CN' }
 }
 
 export function getLocalSetting(): AppState {

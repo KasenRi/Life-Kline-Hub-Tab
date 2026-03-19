@@ -74,6 +74,23 @@ const options = [
   },
 ]
 
+function normalizeUrlForParsing(rawUrl: string) {
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(rawUrl))
+    return rawUrl
+
+  return `https://${rawUrl}`
+}
+
+function toTitleCase(text: string) {
+  return text.replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function buildTitleFromUrl(rawUrl: string) {
+  const hostname = new URL(normalizeUrlForParsing(rawUrl)).hostname
+  const mainPart = hostname.replace(/^www\./i, '').split('.')[0] || ''
+  return toTitleCase(mainPart.replace(/[-_]+/g, ' '))
+}
+
 // 更新值父组件传来的值
 const show = computed({
   get: () => props.visible,
@@ -111,6 +128,9 @@ async function getIconByUrl(url: string, loadingIndex: number) {
       itemType: 2,
       src: buildLocalFaviconUrl(url),
     }
+
+    if (!model.value.title.trim())
+      model.value.title = buildTitleFromUrl(url)
   }
   catch {
     ms.error(t('iconItem.geticonFail'))
