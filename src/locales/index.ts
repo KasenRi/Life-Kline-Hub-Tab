@@ -29,7 +29,7 @@ function interpolateMessage(message: string, params?: Record<string, any>) {
 
 export function t(key: string, ...args: any[]) {
   const [params] = args
-  const currentMessages = messages[localeRef.value] || messages[defaultLocale]
+  const currentMessages = messages[localeRef.value] ? messages[localeRef.value] : messages[defaultLocale]
   const fallbackMessages = messages[defaultLocale]
   const rawMessage = getMessageValue(currentMessages, key) ?? (getMessageValue(fallbackMessages, key))
 

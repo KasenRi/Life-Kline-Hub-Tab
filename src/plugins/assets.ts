@@ -11,8 +11,23 @@ function naiveStyleOverride() {
   document.head.appendChild(meta)
 }
 
+function setupCustomAssets() {
+  const cssHref = new URL('./custom/index.css', window.location.href).toString()
+  const jsSrc = new URL('./custom/index.js', window.location.href).toString()
+
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = cssHref
+  document.head.appendChild(link)
+
+  const script = document.createElement('script')
+  script.src = jsSrc
+  document.body.appendChild(script)
+}
+
 function setupAssets() {
   naiveStyleOverride()
+  setupCustomAssets()
 }
 
 export default setupAssets

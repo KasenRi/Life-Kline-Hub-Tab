@@ -122,6 +122,7 @@ export default defineConfig((env) => {
       },
     },
     build: {
+      minify: 'terser',
       reportCompressedSize: false,
       sourcemap: false,
       commonjsOptions: {
