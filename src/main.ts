@@ -15,20 +15,20 @@ async function bootstrap() {
 
   setupStore(app)
 
-  await Promise.allSettled([
+  setupI18n(app)
+
+  await setupRouter(app)
+  app.mount('#app')
+
+  void Promise.allSettled([
     useAppStore().hydrateFromStorage(),
     useAuthStore().hydrateFromStorage(),
     useUserStore().hydrateFromStorage(),
     usePanelState().hydrateFromStorage(),
     useModuleConfig().hydrateFromStorage(),
-  ])
-
-  setupI18n(app)
-
-  void updateLocalUserInfo()
-
-  await setupRouter(app)
-  app.mount('#app')
+  ]).then(() => {
+    void updateLocalUserInfo()
+  })
 }
 
 bootstrap().catch((error) => {

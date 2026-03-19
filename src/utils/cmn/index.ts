@@ -7,11 +7,15 @@ import { getAuthInfo } from '@/api/system/user'
 import { VisitMode } from '@/enums/auth'
 import { getListByDisplayType as getListByDisplayTypeApi } from '@/api/notice'
 
-const noticeStore = useNoticeStore()
-const userStore = useUserStore()
-const authStore = useAuthStore()
-
 const { notification } = createDiscreteApi(['notification'])
+
+function getStores() {
+  return {
+    noticeStore: useNoticeStore(),
+    userStore: useUserStore(),
+    authStore: useAuthStore(),
+  }
+}
 /**
  * 生成指定时间格式
  * @param format 时间格式 默认：'YYYY-MM-DD HH:mm:ss'
@@ -33,6 +37,7 @@ export function timeFormat(timeString?: string) {
  * @param timeString
  */
 export function noticeCreate(info: Notice.NoticeInfo) {
+  const { noticeStore, userStore } = getStores()
   const option: any = {
     title: info.title,
     content: info.content,
@@ -103,6 +108,7 @@ export function getTitle(titile: string) {
 
 //
 export async function updateLocalUserInfo() {
+  const { authStore, userStore } = getStores()
   interface Req {
     user: User.Info
     visitMode: VisitMode
@@ -137,6 +143,7 @@ export async function updateLocalUserInfo() {
 }
 
 export async function getNotice(displayType: number | number[]) {
+  const { noticeStore, userStore } = getStores()
   let param: number[]
   if (typeof displayType === 'number')
     param = [displayType]

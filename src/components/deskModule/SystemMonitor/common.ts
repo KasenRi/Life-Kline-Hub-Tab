@@ -2,14 +2,19 @@ import type { MonitorData } from './typings'
 import { useModuleConfig } from '@/store/modules'
 
 const modelName = 'systemMonitor'
-const moduleConfig = useModuleConfig()
+
+function getModuleConfigStore() {
+  return useModuleConfig()
+}
 
 export async function saveAll(value: MonitorData[]) {
+  const moduleConfig = getModuleConfigStore()
   moduleConfig.saveToLocal(modelName, { list: value })
   return { code: 0, data: { list: value }, msg: 'OK' }
 }
 
 export async function getAll(): Promise< MonitorData[]> {
+  const moduleConfig = getModuleConfigStore()
   await moduleConfig.hydrateFromStorage()
   const data = moduleConfig.getValueByNameFromLocal<{ list: MonitorData[] }>(modelName)
   if (data && data.list)
