@@ -33,8 +33,16 @@ function getHostPermissions(apiBaseUrl: string) {
 }
 
 function createExtensionManifestPlugin(env: ImportMetaEnv): PluginOption {
-  const hostPermissions = getHostPermissions(env.VITE_APP_API_BASE_URL)
-  const connectOrigins = hostPermissions.map(pattern => pattern.replace(/\/\*$/, ''))
+  const hostPermissions = [
+    ...getHostPermissions(env.VITE_APP_API_BASE_URL),
+    'https://*/*',
+    'http://*/*',
+  ]
+  const connectSources = [
+    "'self'",
+    'http:',
+    'https:',
+  ]
 
   return {
     name: 'mv3-manifest',
@@ -62,7 +70,7 @@ function createExtensionManifestPlugin(env: ImportMetaEnv): PluginOption {
           default_title: 'LKTab',
         },
         content_security_policy: {
-          extension_pages: `script-src 'self'; object-src 'self'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; connect-src 'self' ${connectOrigins.join(' ')};`,
+          extension_pages: `script-src 'self'; object-src 'self'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; connect-src ${connectSources.join(' ')};`,
         },
       }
 

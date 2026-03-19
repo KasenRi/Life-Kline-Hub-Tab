@@ -3,7 +3,7 @@ import { computed, defineEmits, defineProps, ref, watch } from 'vue'
 import type { FormInst, FormRules } from 'naive-ui'
 import { NButton, NForm, NFormItem, NGrid, NGridItem, NInput, NInputGroup, NModal, NSelect, useMessage } from 'naive-ui'
 import IconEditor from './IconEditor.vue'
-import { buildLocalFaviconUrl, getLocalItemGroups, saveLocalItem } from '@/utils/localFirst/panelData'
+import { buildLocalFaviconUrl, getLocalItemGroups, resolveFaviconFallbackUrl, saveLocalItem } from '@/utils/localFirst/panelData'
 import { t } from '@/locales'
 
 interface Props {
@@ -126,11 +126,17 @@ async function getIconByUrl(url: string, loadingIndex: number) {
   try {
     model.value.icon = {
       itemType: 2,
-      src: buildLocalFaviconUrl(url),
+      src: resolveFaviconFallbackUrl(url),
     }
 
     if (!model.value.title.trim())
       model.value.title = buildTitleFromUrl(url)
+
+    const highResIconUrl = await buildLocalFaviconUrl(url)
+    model.value.icon = {
+      itemType: 2,
+      src: highResIconUrl,
+    }
   }
   catch {
     ms.error(t('iconItem.geticonFail'))

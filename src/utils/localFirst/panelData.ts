@@ -223,7 +223,7 @@ function normalizePreviewUrl(rawUrl: string) {
   return `https://${rawUrl}`
 }
 
-export function buildLocalFaviconUrl(rawUrl: string): string {
+export function resolveFaviconFallbackUrl(rawUrl: string) {
   const normalizedUrl = normalizePreviewUrl(rawUrl)
   if (typeof window !== 'undefined' && (window.location.protocol === 'chrome-extension:' || window.location.protocol === 'moz-extension:')) {
     const pageUrl = encodeURIComponent(normalizedUrl)
@@ -231,6 +231,98 @@ export function buildLocalFaviconUrl(rawUrl: string): string {
   }
 
   return `https://www.google.com/s2/favicons?sz=128&domain_url=${encodeURIComponent(normalizedUrl)}`
+}
+
+function resolveAbsoluteUrl(baseUrl: string, maybeRelativeUrl: string) {
+  if (maybeRelativeUrl.startsWith('//')) {
+    const { protocol } = new URL(baseUrl)
+    return `${protocol}${maybeRelativeUrl}`
+  }
+
+  return new URL(maybeRelativeUrl, baseUrl).toString()
+}
+
+function extractCandidateScore(link: HTMLLinkElement) {
+  const rel = (link.getAttribute('rel') || '').toLowerCase()
+  const sizes = link.getAttribute('sizes') || ''
+  const maxSize = sizes.split(/\s+/).reduce((result, item) => {
+    const [width] = item.split('x')
+    const parsedWidth = Number(width)
+    return Number.isFinite(parsedWidth) ? Math.max(result, parsedWidth) : result
+  }, 0)
+
+  let score = maxSize
+  if (rel.includes('apple-touch-icon'))
+    score += 1000
+  else if (rel.includes('icon'))
+    score += 100
+
+  return score
+}
+
+async function findSiteIconCandidates(rawUrl: string) {
+  const normalizedUrl = normalizePreviewUrl(rawUrl)
+  const response = await fetch(normalizedUrl)
+  if (!response.ok)
+    throw new Error(`fetch page failed: ${response.status}`)
+
+  const html = await response.text()
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const links = Array.from(doc.querySelectorAll('link'))
+    .filter((link) => {
+      const rel = (link.getAttribute('rel') || '').toLowerCase()
+      return rel.includes('icon')
+    })
+    .map((link) => ({
+      href: link.getAttribute('href') || '',
+      score: extractCandidateScore(link),
+    }))
+    .filter(link => Boolean(link.href))
+    .sort((a, b) => b.score - a.score)
+    .map(link => resolveAbsoluteUrl(normalizedUrl, link.href))
+
+  const defaultFavicon = `${new URL(normalizedUrl).origin}/favicon.ico`
+  return Array.from(new Set([...links, defaultFavicon]))
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('blob to data url failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function downloadImageAsDataUrl(url: string) {
+  const response = await fetch(url)
+  if (!response.ok)
+    throw new Error(`fetch image failed: ${response.status}`)
+
+  const blob = await response.blob()
+  if (!blob.type.startsWith('image/'))
+    throw new Error(`invalid image type: ${blob.type}`)
+
+  return await blobToDataUrl(blob)
+}
+
+export async function buildLocalFaviconUrl(rawUrl: string) {
+  try {
+    const candidates = await findSiteIconCandidates(rawUrl)
+    for (const candidate of candidates) {
+      try {
+        return await downloadImageAsDataUrl(candidate)
+      }
+      catch {
+        // Try the next candidate until one of the icons is reachable.
+      }
+    }
+  }
+  catch {
+    // Fall back to the browser-provided favicon service below.
+  }
+
+  return resolveFaviconFallbackUrl(rawUrl)
 }
 
 function getFileExtension(file: globalThis.File): string {
