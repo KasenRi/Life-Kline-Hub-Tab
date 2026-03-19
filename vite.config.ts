@@ -3,6 +3,7 @@ import { writeFileSync } from 'fs'
 import type { PluginOption } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
 
@@ -74,6 +75,9 @@ function createExtensionManifestPlugin(env: ImportMetaEnv): PluginOption {
 function setupPlugins(env: ImportMetaEnv): PluginOption[] {
   return [
     vue(),
+    VueI18nPlugin({
+      include: [path.resolve(process.cwd(), 'src/locales/*.json')],
+    }),
     createExtensionManifestPlugin(env),
     env.VITE_GLOB_APP_PWA === 'true' && VitePWA({
       injectRegister: 'auto',
