@@ -1,0 +1,26 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <g filter="url(#blurA)">
+    <circle cx="310" cy="248" r="230" fill="#F9A8D4" fill-opacity="0.52"/>
+    <circle cx="1570" cy="182" r="280" fill="#C4B5FD" fill-opacity="0.48"/>
+    <circle cx="1410" cy="812" r="300" fill="#67E8F9" fill-opacity="0.35"/>
+    <circle cx="594" cy="842" r="330" fill="#FDE68A" fill-opacity="0.28"/>
+  </g>
+  <g opacity="0.2">
+    <path d="M1680 154C1530 316 1408 422 1312 474C1128 576 868 640 602 692C426 726 294 792 206 890" stroke="white" stroke-width="2"/>
+    <path d="M142 298C306 204 460 174 604 208C862 270 1032 484 1332 512C1498 528 1650 486 1788 386" stroke="white" stroke-width="2"/>
+    <path d="M464 1042C600 912 762 832 950 802C1166 768 1358 814 1528 940" stroke="white" stroke-width="2"/>
+  </g>
+  <defs>
+    <linearGradient id="bg" x1="143" y1="74" x2="1686" y2="1022" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.48" stop-color="#312E81"/>
+      <stop offset="1" stop-color="#9D174D"/>
+    </linearGradient>
+    <filter id="blurA" x="-120" y="-208" width="2054" height="1586" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="100" result="effect1_foregroundBlur_1_2"/>
+    </filter>
+  </defs>
+</svg>
