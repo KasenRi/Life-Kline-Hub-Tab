@@ -15,7 +15,7 @@ async function bootstrap() {
 
   setupStore(app)
 
-  await Promise.all([
+  await Promise.allSettled([
     useAppStore().hydrateFromStorage(),
     useAuthStore().hydrateFromStorage(),
     useUserStore().hydrateFromStorage(),
@@ -31,4 +31,6 @@ async function bootstrap() {
   app.mount('#app')
 }
 
-bootstrap()
+bootstrap().catch((error) => {
+  console.error('LKTab bootstrap failed:', error)
+})
