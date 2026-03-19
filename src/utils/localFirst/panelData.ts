@@ -216,9 +216,21 @@ export async function replaceLocalLayout(groups: Panel.ItemIconGroup[], itemMap:
   await setStoredItemMap(nextItemMap)
 }
 
+function normalizePreviewUrl(rawUrl: string) {
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(rawUrl))
+    return rawUrl
+
+  return `https://${rawUrl}`
+}
+
 export function buildLocalFaviconUrl(rawUrl: string): string {
-  const { protocol, host } = new URL(rawUrl)
-  return `${protocol}//${host}/favicon.ico`
+  const normalizedUrl = normalizePreviewUrl(rawUrl)
+  if (typeof window !== 'undefined' && (window.location.protocol === 'chrome-extension:' || window.location.protocol === 'moz-extension:')) {
+    const pageUrl = encodeURIComponent(normalizedUrl)
+    return `${window.location.origin}/_favicon/?pageUrl=${pageUrl}&size=128`
+  }
+
+  return `https://www.google.com/s2/favicons?sz=128&domain_url=${encodeURIComponent(normalizedUrl)}`
 }
 
 function getFileExtension(file: globalThis.File): string {

@@ -53,7 +53,7 @@ function createExtensionManifestPlugin(env: ImportMetaEnv): PluginOption {
           48: 'logo.png',
           128: 'logo.png',
         },
-        permissions: ['storage'],
+        permissions: ['storage', 'favicon'],
         host_permissions: hostPermissions,
         chrome_url_overrides: {
           newtab: 'index.html',

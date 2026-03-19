@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NAvatar, NImage } from 'naive-ui'
+import { NAvatar } from 'naive-ui'
 import { computed, ref, withDefaults } from 'vue'
 import { SvgIconOnline } from '@/components/common'
 
@@ -31,10 +31,13 @@ const iconExt = computed(() => {
         </template>
 
         <template v-else-if="itemIcon?.itemType === 2">
-          <div v-if="iconExt === 'svg'" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle }" class="flex justify-center items-center">
-            <img :src="itemIcon?.src" class="w-[35px] h-[35px]">
+          <div :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle }" class="flex justify-center items-center overflow-hidden rounded-xl">
+            <img
+              :src="itemIcon?.src"
+              :class="iconExt === 'svg' || iconExt === 'ico' ? 'w-[35px] h-[35px]' : 'w-full h-full object-contain'"
+              referrerpolicy="no-referrer"
+            >
           </div>
-          <NImage v-else :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle }" :src="itemIcon?.src" preview-disabled />
         </template>
 
         <template v-else-if="itemIcon?.itemType === 3">
