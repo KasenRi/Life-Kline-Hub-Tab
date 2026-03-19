@@ -18,14 +18,19 @@ interface Version {
 }
 
 const appStore = useAppStore()
-const versionName = ref('')
-const qqGroupQRShow = ref(false)
 const frontVersion = import.meta.env.VITE_APP_VERSION || 'unknown'
+const versionName = ref(frontVersion)
+const qqGroupQRShow = ref(false)
 
 onMounted(() => {
-  get<Version>().then((res) => {
+  get<Version>({
+    silentAuth: true,
+    silentError: true,
+  }).then((res) => {
     if (res.code === 0)
       versionName.value = res.data.versionName
+  }).catch(() => {
+    versionName.value = frontVersion
   })
 })
 </script>
