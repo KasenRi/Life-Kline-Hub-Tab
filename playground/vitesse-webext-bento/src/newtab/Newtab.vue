@@ -382,6 +382,7 @@ const desktopMenuRef = ref<HTMLElement | null>(null)
 const iconModalPanelRef = ref<HTMLElement | null>(null)
 const iconUploadInputRef = ref<HTMLInputElement | null>(null)
 const iconModalTargetId = ref<string | null>(null)
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
@@ -437,6 +438,135 @@ const iconPreviewSrc = computed(() => {
 
   return makeSolidIcon(iconModal.value.form.title || 'App')
 })
+const shortcutBadgeLabel = computed(() => (/Mac|iPhone|iPad|iPod/.test(globalThis.navigator?.platform ?? '') ? '⌘K' : 'Ctrl K'))
+const quoteCardStyle = computed(() => ({
+  opacity: appSettings.value.screenSaverOpacity / 100,
+  borderColor: withAlpha(appSettings.value.themeColor, 0.16),
+  boxShadow: `0 18px 60px ${withAlpha('#020617', 0.28)}`,
+}))
+const quoteText = computed(() => {
+  return `Local First means the desktop is ready before the network is.`
+})
+const quoteMeta = computed(() => `Life Kline Hub · ${activePage.value?.title ?? 'Workspace'}`)
+const themeTextStyle = computed(() => ({
+  color: withAlpha(appSettings.value.themeColor, 0.92),
+}))
+const themeGlowStyle = computed(() => ({
+  background: `radial-gradient(circle at center, ${withAlpha(appSettings.value.themeColor, 0.3)} 0%, transparent 72%)`,
+}))
+const wallpaperBlurStyle = computed(() => ({
+  backdropFilter: `blur(${appSettings.value.backgroundBlur}px)`,
+}))
+const backgroundMaskStyle = computed(() => ({
+  background: `linear-gradient(to bottom, ${withAlpha('#020617', appSettings.value.backgroundMaskOpacity / 650)}, ${withAlpha('#020617', appSettings.value.backgroundMaskOpacity / 350)}, ${withAlpha('#020617', appSettings.value.backgroundMaskOpacity / 180)})`,
+}))
+const backgroundFloorStyle = computed(() => ({
+  background: `linear-gradient(to top, ${withAlpha('#020617', appSettings.value.backgroundMaskOpacity / 160)}, transparent)`,
+}))
+const clockBlockStyle = computed(() => ({
+  transform: `scale(${appSettings.value.clockScale / 100})`,
+  transformOrigin: 'top right',
+}))
+const effectiveGridColumns = computed(() => {
+  const preferred = appSettings.value.iconColumn
+  if (viewportWidth.value < 640)
+    return Math.min(preferred, 4)
+  if (viewportWidth.value < 1024)
+    return Math.min(preferred, 6)
+  if (viewportWidth.value < 1280)
+    return Math.min(preferred, 8)
+  return preferred
+})
+const gridStyle = computed(() => {
+  const rowSize = Math.max(98, Math.round(appSettings.value.iconSize * 1.76))
+  return {
+    gridTemplateColumns: `repeat(${effectiveGridColumns.value}, minmax(0, 1fr))`,
+    gridAutoRows: `${rowSize}px`,
+    columnGap: `${appSettings.value.iconGap}px`,
+    rowGap: `${Math.max(24, appSettings.value.iconGap + 12)}px`,
+  }
+})
+const iconPixelSize = computed(() => `${appSettings.value.iconSize}px`)
+const iconRadiusPx = computed(() => `${Math.round((appSettings.value.iconSize / 2) * (appSettings.value.iconRadius / 100))}px`)
+const iconButtonStyle = computed(() => ({
+  maxWidth: `${appSettings.value.iconSize + 36}px`,
+}))
+const iconSurfaceStyle = computed(() => ({
+  width: iconPixelSize.value,
+  height: iconPixelSize.value,
+}))
+const iconImageStyle = computed(() => ({
+  borderRadius: iconRadiusPx.value,
+}))
+const iconBackdropStyle = computed(() => ({
+  borderRadius: iconRadiusPx.value,
+  borderColor: withAlpha(appSettings.value.themeColor, 0.12),
+  boxShadow: `0 10px 40px ${withAlpha('#020617', 0.18)}`,
+}))
+const folderThumbRadiusStyle = computed(() => ({
+  borderRadius: `${Math.max(6, Math.round(appSettings.value.iconSize * 0.14))}px`,
+}))
+const searchWrapStyle = computed(() => ({
+  maxWidth: `${clamp(Math.round(viewportWidth.value * (appSettings.value.searchWidth / 100)), 420, 960)}px`,
+}))
+const searchInputStyle = computed(() => ({
+  borderRadius: `${appSettings.value.searchRadius}px`,
+  backdropFilter: `blur(${appSettings.value.searchBlur}px)`,
+  boxShadow: `0 20px 80px ${withAlpha('#020617', 0.35)}, 0 0 0 1px ${withAlpha(appSettings.value.themeColor, 0.08)}`,
+}))
+const searchBadgeStyle = computed(() => ({
+  borderColor: withAlpha(appSettings.value.themeColor, 0.16),
+  backgroundColor: withAlpha('#0f172a', 0.3),
+  color: withAlpha(appSettings.value.themeColor, 0.92),
+}))
+const activePageDotStyle = computed(() => ({
+  backgroundColor: withAlpha(appSettings.value.themeColor, 0.3),
+  borderColor: withAlpha(appSettings.value.themeColor, 0.24),
+  boxShadow: `0 10px 30px ${withAlpha(appSettings.value.themeColor, 0.22)}`,
+}))
+const inactivePageDotStyle = computed(() => ({
+  backgroundColor: withAlpha(appSettings.value.themeColor, 0.24),
+}))
+const settingsButtonStyle = computed(() => ({
+  borderColor: withAlpha(appSettings.value.themeColor, 0.14),
+  boxShadow: `0 18px 48px ${withAlpha(appSettings.value.themeColor, 0.14)}`,
+}))
+const searchSuggestions = computed(() => {
+  if (!appSettings.value.showSearchSuggestions || !keyword.value)
+    return []
+
+  return visibleItems.value
+    .flatMap((item) => {
+      if (isAppItem(item))
+        return [{ id: item.id, title: item.title, kind: 'app' as const }]
+      if (isFolderItem(item))
+        return item.children.map(child => ({ id: child.id, title: child.title, kind: 'folder-app' as const }))
+      return [{ id: item.id, title: item.title, kind: 'widget' as const }]
+    })
+    .slice(0, 4)
+})
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '')
+  const value = normalized.length === 3
+    ? normalized.split('').map(char => char + char).join('')
+    : normalized
+
+  if (!/^[0-9a-f]{6}$/i.test(value))
+    return { r: 125, g: 211, b: 252 }
+
+  const int = Number.parseInt(value, 16)
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255,
+  }
+}
+
+function withAlpha(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex)
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`
+}
 
 function widgetSpanClass(size: WidgetSize) {
   if (size === '1x2')
@@ -452,12 +582,20 @@ function widgetSpanClass(size: WidgetSize) {
 
 function updateClock() {
   const now = new Date()
-  clock.value = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  clock.value = now.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: !appSettings.value.clockUse24Hour,
+  })
   dateLabel.value = now.toLocaleDateString([], {
     month: 'short',
     day: 'numeric',
     weekday: 'short',
   })
+}
+
+function updateViewportMetrics() {
+  viewportWidth.value = window.innerWidth
 }
 
 function setActivePage(pageId: string) {
@@ -1083,6 +1221,29 @@ function openSettings() {
   isSettingsOpen.value = true
 }
 
+function applySuggestion(title: string) {
+  omnibar.value = title
+  omnibarRef.value?.focus()
+}
+
+function submitQuickSearch(engine: 'google' | 'github' | 'youtube') {
+  const query = omnibar.value.trim()
+  if (!query)
+    return
+
+  if (engine === 'github') {
+    openUrl(`https://github.com/search?q=${encodeURIComponent(query)}`)
+    return
+  }
+
+  if (engine === 'youtube') {
+    openUrl(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`)
+    return
+  }
+
+  openUrl(`https://www.google.com/search?q=${encodeURIComponent(query)}`)
+}
+
 function findMatchedApp(search: string) {
   const page = activePage.value
   if (!page)
@@ -1225,8 +1386,14 @@ watch(activePageId, () => {
   closeIconModal()
 })
 
+watch(() => appSettings.value.clockUse24Hour, () => {
+  updateClock()
+})
+
 onMounted(async () => {
   window.addEventListener('keydown', handleWindowKeydown)
+  window.addEventListener('resize', updateViewportMetrics)
+  updateViewportMetrics()
   updateClock()
   clockTimer = window.setInterval(updateClock, 60_000)
   await nextTick()
@@ -1235,6 +1402,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleWindowKeydown)
+  window.removeEventListener('resize', updateViewportMetrics)
   if (clockTimer != null)
     window.clearInterval(clockTimer)
   sortable?.destroy()
@@ -1248,11 +1416,14 @@ onBeforeUnmount(() => {
     :style="{ backgroundImage: `url(${scenicWallpaper})` }"
     @contextmenu.prevent="openDesktopMenu"
   >
-    <div class="absolute inset-0 bg-gradient-to-b from-slate-950/[0.04] via-slate-950/[0.12] to-slate-950/[0.32]" />
-    <div class="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-slate-950/[0.32] to-transparent" />
-    <div class="absolute -left-24 top-0 h-96 w-96 rounded-full bg-sky-200/[0.12] blur-3xl" />
-    <div class="absolute right-0 top-12 h-80 w-80 rounded-full bg-amber-100/20 blur-3xl" />
-    <div class="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-sky-100/15 blur-3xl" />
+    <div class="absolute inset-0" :style="wallpaperBlurStyle" />
+    <div class="absolute inset-0" :style="backgroundMaskStyle" />
+    <div class="absolute inset-x-0 bottom-0 h-56" :style="backgroundFloorStyle" />
+    <template v-if="appSettings.showBackdropGlow">
+      <div class="absolute -left-24 top-0 h-96 w-96 rounded-full blur-3xl" :style="themeGlowStyle" />
+      <div class="absolute right-0 top-12 h-80 w-80 rounded-full bg-amber-100/20 blur-3xl" />
+      <div class="absolute bottom-0 right-0 h-96 w-96 rounded-full blur-3xl" :style="themeGlowStyle" />
+    </template>
 
     <main class="relative z-10 min-h-screen px-5 pb-8 pt-6 sm:px-8 lg:px-12">
       <div class="mx-auto flex min-h-screen max-w-[1400px] flex-col">
@@ -1269,7 +1440,7 @@ onBeforeUnmount(() => {
             </p>
           </div>
 
-          <div v-if="appSettings.showClock" class="hidden text-right sm:block">
+          <div v-if="appSettings.showClock" class="hidden text-right sm:block" :style="clockBlockStyle">
             <p class="text-4xl font-semibold tracking-tight text-white/95 drop-shadow-md">
               {{ clock }}
             </p>
@@ -1288,7 +1459,7 @@ onBeforeUnmount(() => {
           :style="{ opacity: appSettings.searchOpacity / 100 }"
           @submit.prevent="submitOmnibar"
         >
-          <div class="relative w-full max-w-3xl md:w-[56%]">
+          <div class="relative w-full" :style="searchWrapStyle">
             <input
               ref="omnibarRef"
               v-model="omnibar"
@@ -1297,7 +1468,7 @@ onBeforeUnmount(() => {
               autocomplete="off"
               spellcheck="false"
               class="h-[3.75rem] w-full rounded-full border border-white/10 bg-black/[0.28] pl-7 pr-24 text-[15px] text-white placeholder:text-white/40 shadow-[0_20px_80px_rgba(3,7,18,0.35)] backdrop-blur-md outline-none transition focus:border-white/20 focus:ring-4 focus:ring-sky-200/25"
-              :style="{ borderRadius: `${appSettings.searchRadius}px` }"
+              :style="searchInputStyle"
             >
 
             <button
@@ -1306,8 +1477,40 @@ onBeforeUnmount(() => {
             >
               Enter
             </button>
+
+            <div
+              v-if="appSettings.showShortcutBadge"
+              class="absolute right-[5.6rem] top-1/2 hidden -translate-y-1/2 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:inline-flex"
+              :style="searchBadgeStyle"
+            >
+              {{ shortcutBadgeLabel }}
+            </div>
           </div>
         </form>
+
+        <div v-if="searchSuggestions.length && appSettings.showSearch" class="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <button
+            v-for="suggestion in searchSuggestions"
+            :key="suggestion.id"
+            type="button"
+            class="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs text-white/80 backdrop-blur-md transition hover:bg-white/12"
+            @click="applySuggestion(suggestion.title)"
+          >
+            {{ suggestion.title }}
+          </button>
+        </div>
+
+        <div v-if="appSettings.allowQuickSearch && appSettings.showSearch" class="mt-4 flex items-center justify-center gap-2 text-xs">
+          <button type="button" class="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-white/70 backdrop-blur-sm transition hover:bg-white/12 hover:text-white" @click="submitQuickSearch('google')">
+            Google
+          </button>
+          <button type="button" class="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-white/70 backdrop-blur-sm transition hover:bg-white/12 hover:text-white" @click="submitQuickSearch('github')">
+            GitHub
+          </button>
+          <button type="button" class="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-white/70 backdrop-blur-sm transition hover:bg-white/12 hover:text-white" @click="submitQuickSearch('youtube')">
+            YouTube
+          </button>
+        </div>
 
         <p class="mt-3 text-center text-xs text-white/65 drop-shadow-md">
           {{ keyword ? '筛选中，已暂停拖拽排序' : '拖动图标或小组件即可重排当前页面' }}
@@ -1317,7 +1520,8 @@ onBeforeUnmount(() => {
           <div
             v-if="visibleItems.length"
             ref="gridRef"
-            class="grid auto-rows-[98px] grid-flow-dense grid-cols-4 justify-items-center gap-x-4 gap-y-8 sm:grid-cols-6 sm:gap-x-6 lg:grid-cols-8 xl:grid-cols-10"
+            class="grid grid-flow-dense justify-items-center"
+            :style="gridStyle"
           >
             <template v-for="item in visibleItems" :key="item.id">
               <button
@@ -1325,24 +1529,35 @@ onBeforeUnmount(() => {
                 type="button"
                 data-grid-item
                 data-item-type="app"
-                class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
+                class="group flex w-full flex-col items-center justify-self-center self-start"
+                :style="iconButtonStyle"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
-                  <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10" />
+                <div
+                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                  :style="iconSurfaceStyle"
+                >
+                  <div class="absolute inset-0 -z-10 overflow-hidden bg-white/10 backdrop-blur-xl border" :style="iconBackdropStyle" />
                   <img
                     :src="item.icon"
                     :alt="item.title"
-                    class="relative h-full w-full rounded-2xl object-cover shadow-sm"
+                    class="relative h-full w-full object-cover shadow-sm"
+                    :style="iconImageStyle"
                   >
                 </div>
                 <span
                   v-if="appSettings.showIconLabels"
-                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
                   :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                 >
                   {{ item.title }}
+                </span>
+                <span
+                  v-if="appSettings.enableShortcutHints && item.shortcut"
+                  class="mt-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                >
+                  {{ item.shortcut }}
                 </span>
               </button>
 
@@ -1351,17 +1566,22 @@ onBeforeUnmount(() => {
                 type="button"
                 data-grid-item
                 data-item-type="folder"
-                class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
+                class="group flex w-full flex-col items-center justify-self-center self-start"
+                :style="iconButtonStyle"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent
               >
-                <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
-                  <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/[0.18] backdrop-blur-xl border border-white/10" />
+                <div
+                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                  :style="iconSurfaceStyle"
+                >
+                  <div class="absolute inset-0 -z-10 overflow-hidden bg-white/[0.18] backdrop-blur-xl border" :style="iconBackdropStyle" />
                   <div class="relative grid h-full w-full grid-cols-3 gap-1 p-2">
                     <div
                       v-for="child in item.children.slice(0, 6)"
                       :key="child.id"
-                      class="overflow-hidden rounded-lg bg-white/[0.12]"
+                      class="overflow-hidden bg-white/[0.12]"
+                      :style="folderThumbRadiusStyle"
                     >
                       <img
                         :src="child.icon"
@@ -1373,7 +1593,7 @@ onBeforeUnmount(() => {
                 </div>
                 <span
                   v-if="appSettings.showIconLabels"
-                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
                   :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                 >
                   {{ item.title }}
@@ -1447,7 +1667,8 @@ onBeforeUnmount(() => {
             type="button"
             :aria-label="page.title"
             class="h-3 rounded-full transition-all duration-300"
-            :class="page.id === activePageId ? 'w-10 border border-white/20 bg-white/30 shadow-lg backdrop-blur-md' : 'w-3 bg-white/35 hover:bg-white/50'"
+            :class="page.id === activePageId ? 'w-10 border shadow-lg backdrop-blur-md' : 'w-3 hover:bg-white/50'"
+            :style="page.id === activePageId ? activePageDotStyle : inactivePageDotStyle"
             @click="setActivePage(page.id)"
           />
         </footer>
@@ -1507,12 +1728,16 @@ onBeforeUnmount(() => {
                 @click="openApp(child)"
                 @contextmenu.stop.prevent="openContextMenu($event, child.id, child.type)"
               >
-                <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
-                  <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10" />
+                <div
+                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                  :style="iconSurfaceStyle"
+                >
+                  <div class="absolute inset-0 -z-10 overflow-hidden bg-white/10 backdrop-blur-xl border" :style="iconBackdropStyle" />
                   <img
                     :src="child.icon"
                     :alt="child.title"
-                    class="relative h-full w-full rounded-2xl object-cover shadow-sm"
+                    class="relative h-full w-full object-cover shadow-sm"
+                    :style="iconImageStyle"
                   >
                 </div>
                 <span
@@ -1535,6 +1760,7 @@ onBeforeUnmount(() => {
       aria-label="打开设置"
       data-prevent-desktop-menu
       class="fixed bottom-8 right-8 z-40 flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/10 bg-black/20 text-white/70 shadow-lg backdrop-blur-md transition-all hover:scale-110 hover:bg-white/20 hover:text-white transform-gpu"
+      :style="settingsButtonStyle"
       @click="openSettings"
       @contextmenu.stop.prevent
     >
@@ -1846,6 +2072,28 @@ onBeforeUnmount(() => {
       class="hidden"
       @change="handleIconUpload"
     >
+
+    <transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="opacity-0 translate-y-2"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 translate-y-2"
+    >
+      <div
+        v-if="appSettings.showScreenSaverQuote"
+        class="pointer-events-none fixed bottom-8 left-8 z-20 hidden max-w-sm rounded-[28px] border bg-black/15 px-5 py-4 backdrop-blur-xl md:block"
+        :style="quoteCardStyle"
+      >
+        <p class="text-sm leading-6 text-white/88">
+          {{ quoteText }}
+        </p>
+        <p class="mt-3 text-[11px] uppercase tracking-[0.26em]" :style="themeTextStyle">
+          {{ quoteMeta }}
+        </p>
+      </div>
+    </transition>
 
     <SettingsModal v-if="isSettingsOpen" @close="isSettingsOpen = false" />
   </div>
