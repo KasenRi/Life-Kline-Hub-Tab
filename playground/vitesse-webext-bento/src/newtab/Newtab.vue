@@ -514,6 +514,9 @@ const iconSurfaceStyle = computed(() => ({
   width: iconPixelSize.value,
   height: iconPixelSize.value,
 }))
+const iconButtonStyle = computed(() => ({
+  maxWidth: `${appSettings.value.iconSize + 36}px`,
+}))
 const iconImageStyle = computed(() => ({
   borderRadius: iconRadiusPx.value,
 }))
@@ -522,6 +525,13 @@ const iconBackdropStyle = computed(() => ({
   borderColor: withAlpha(appSettings.value.themeColor, 0.12),
   boxShadow: `0 10px 40px ${withAlpha('#020617', 0.18)}`,
 }))
+const largeAppIconStyle = computed(() => {
+  const physicalSize = clamp(appSettings.value.iconSize + 8, 64, 84)
+  return {
+    width: `${physicalSize}px`,
+    height: `${physicalSize}px`,
+  }
+})
 const searchWrapStyle = computed(() => ({
   maxWidth: `${clamp(Math.round(viewportWidth.value * (appSettings.value.searchWidth / 100)), 420, 960)}px`,
 }))
@@ -588,8 +598,8 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function isSquareGridSize(size: GridSize | undefined) {
-  return ['1x1', '2x2', '4x4'].includes(size ?? '1x1')
+function isDefaultAppSize(size: GridSize | undefined) {
+  return !size || size === '1x1'
 }
 
 function gridSpanClass(size: GridSize | undefined) {
@@ -621,16 +631,16 @@ function toRgbString(red: number, green: number, blue: number) {
   return `rgb(${red}, ${green}, ${blue})`
 }
 
-async function getDominantColor(url: string, fallbackSeed = url) {
+async function getDominantColor(url: string, fallbackSeed = url, force = false) {
   if (!url)
     return fallbackColorFromSeed(fallbackSeed)
 
   const cached = iconColorCache.value[url]
-  if (cached)
+  if (!force && cached)
     return cached
 
   if (dominantColorPending.has(url))
-    return fallbackColorFromSeed(fallbackSeed)
+    return cached ?? fallbackColorFromSeed(fallbackSeed)
 
   dominantColorPending.add(url)
   try {
@@ -649,7 +659,7 @@ async function getDominantColor(url: string, fallbackSeed = url) {
     if (!context)
       throw new Error('Canvas context unavailable')
 
-    const sampleSize = 24
+    const sampleSize = 32
     canvas.width = sampleSize
     canvas.height = sampleSize
     context.drawImage(image, 0, 0, sampleSize, sampleSize)
@@ -658,31 +668,43 @@ async function getDominantColor(url: string, fallbackSeed = url) {
     let totalRed = 0
     let totalGreen = 0
     let totalBlue = 0
-    let totalWeight = 0
+    let totalPixels = 0
+    const sampleZones = [
+      { start: Math.floor(sampleSize * 0.22), end: Math.ceil(sampleSize * 0.78), minAlpha: 200 },
+      { start: Math.floor(sampleSize * 0.12), end: Math.ceil(sampleSize * 0.88), minAlpha: 200 },
+      { start: 0, end: sampleSize, minAlpha: 200 },
+      { start: 0, end: sampleSize, minAlpha: 1 },
+    ]
 
-    for (let y = 0; y < sampleSize; y++) {
-      for (let x = 0; x < sampleSize; x++) {
-        const isEdge = x === 0 || y === 0 || x === sampleSize - 1 || y === sampleSize - 1
-        if (!isEdge)
-          continue
+    for (const zone of sampleZones) {
+      totalRed = 0
+      totalGreen = 0
+      totalBlue = 0
+      totalPixels = 0
 
-        const index = (y * sampleSize + x) * 4
-        const alpha = data[index + 3] / 255
-        if (alpha <= 0.02)
-          continue
+      for (let y = zone.start; y < zone.end; y++) {
+        for (let x = zone.start; x < zone.end; x++) {
+          const index = (y * sampleSize + x) * 4
+          const alpha = data[index + 3]
+          if (alpha < zone.minAlpha)
+            continue
 
-        totalRed += data[index] * alpha
-        totalGreen += data[index + 1] * alpha
-        totalBlue += data[index + 2] * alpha
-        totalWeight += alpha
+          totalRed += data[index]
+          totalGreen += data[index + 1]
+          totalBlue += data[index + 2]
+          totalPixels++
+        }
       }
+
+      if (totalPixels > 0)
+        break
     }
 
-    const color = totalWeight
+    const color = totalPixels
       ? toRgbString(
-          Math.round(totalRed / totalWeight),
-          Math.round(totalGreen / totalWeight),
-          Math.round(totalBlue / totalWeight),
+          Math.round(totalRed / totalPixels),
+          Math.round(totalGreen / totalPixels),
+          Math.round(totalBlue / totalPixels),
         )
       : fallbackColorFromSeed(fallbackSeed)
 
@@ -705,48 +727,39 @@ async function getDominantColor(url: string, fallbackSeed = url) {
   }
 }
 
-function ensureDominantColor(url: string, fallbackSeed = url) {
-  if (!url || iconColorCache.value[url] || dominantColorPending.has(url) || typeof window === 'undefined')
+function ensureDominantColor(url: string, fallbackSeed = url, force = false) {
+  if (!url || dominantColorPending.has(url) || typeof window === 'undefined')
     return
 
-  void getDominantColor(url, fallbackSeed)
+  if (!force && iconColorCache.value[url])
+    return
+
+  void getDominantColor(url, fallbackSeed, force)
+}
+
+function refreshDominantColor(url: string, fallbackSeed = url) {
+  ensureDominantColor(url, fallbackSeed, true)
 }
 
 function getAppTileBackground(app: AppItem) {
   return iconColorCache.value[app.icon] ?? fallbackColorFromSeed(app.title || app.icon)
 }
 
-function getAppTileFrameClass(app: AppItem) {
-  return isSquareGridSize(app.size)
-    ? 'h-full w-full overflow-hidden rounded-[24px]'
-    : 'flex h-full w-full items-center justify-center overflow-hidden rounded-[24px]'
-}
-
-function getAppTileFrameStyle(app: AppItem) {
+function getExpandedAppCardStyle(app: AppItem) {
   return {
     backgroundColor: getAppTileBackground(app),
-    borderColor: withAlpha(appSettings.value.themeColor, 0.12),
-    boxShadow: `0 18px 40px ${withAlpha('#020617', 0.22)}`,
+    borderColor: withAlpha(appSettings.value.themeColor, 0.14),
+    boxShadow: `0 22px 58px ${withAlpha('#020617', 0.24)}`,
   }
 }
 
-function getAppImageClass(app: AppItem) {
-  return isSquareGridSize(app.size)
-    ? 'h-full w-full object-cover rounded-[inherit] shadow-sm'
-    : 'h-[60%] w-[60%] object-contain drop-shadow-[0_10px_26px_rgba(2,6,23,0.28)]'
-}
-
-function getAppImageStyle(app: AppItem) {
-  if (isSquareGridSize(app.size))
-    return {}
-
+function getExpandedAppLabelStyle() {
   return {
-    maxWidth: '60%',
-    maxHeight: '60%',
+    opacity: appSettings.value.iconLabelOpacity / 100,
   }
 }
 
-function getAppButtonClass(app: AppItem) {
+function getExpandedAppButtonClass(app: AppItem) {
   return [
     'group relative flex h-full w-full self-stretch justify-self-stretch transition-transform duration-300',
     'hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]',
@@ -893,6 +906,21 @@ function getFolderPreviewImageClass(cell: FolderPreviewCell) {
   return cell.emphasis === 'primary'
     ? 'h-full w-full object-cover'
     : 'h-[72%] w-[72%] object-contain'
+}
+
+function collectPageIconSources(page: DesktopPage | null) {
+  if (!page)
+    return [] as Array<{ id: string, icon: string, title: string }>
+
+  return page.items.flatMap((item) => {
+    if (isAppItem(item))
+      return [{ id: item.id, icon: item.icon, title: item.title }]
+
+    if (isFolderItem(item))
+      return item.children.map(child => ({ id: child.id, icon: child.icon, title: child.title }))
+
+    return []
+  })
 }
 
 function updateClock() {
@@ -1492,6 +1520,7 @@ function saveIconModal() {
     pages.value = nextPages
   }
 
+  refreshDominantColor(preparedApp.icon, preparedApp.title)
   closeIconModal()
 }
 
@@ -1510,6 +1539,7 @@ function fetchIconForModal() {
 
   const target = buildNormalizedUrl(raw)
   iconModal.value.form.icon = `https://www.google.com/s2/favicons?sz=128&domain_url=${encodeURIComponent(target)}`
+  refreshDominantColor(iconModal.value.form.icon, iconModal.value.form.title || target)
 }
 
 function autoFetchIcon() {
@@ -1534,6 +1564,7 @@ function autoFetchIcon() {
 
 function useSolidIconForModal() {
   iconModal.value.form.icon = makeSolidIcon(iconModal.value.form.title || 'App')
+  refreshDominantColor(iconModal.value.form.icon, iconModal.value.form.title || 'App')
 }
 
 function triggerIconUpload() {
@@ -1548,8 +1579,10 @@ function handleIconUpload(event: Event) {
 
   const reader = new FileReader()
   reader.onload = () => {
-    if (typeof reader.result === 'string')
+    if (typeof reader.result === 'string') {
       iconModal.value.form.icon = reader.result
+      refreshDominantColor(reader.result, iconModal.value.form.title || file.name || 'App')
+    }
   }
   reader.readAsDataURL(file)
 
@@ -1936,15 +1969,11 @@ watch(keyword, () => {
   closeIconModal()
 })
 
-watch(visibleItems, (items) => {
-  items.forEach((item) => {
-    if (isAppItem(item)) {
-      ensureDominantColor(item.icon, item.title)
-      return
-    }
-
-    if (isFolderItem(item))
-      item.children.forEach(child => ensureDominantColor(child.icon, child.title))
+watch(() => collectPageIconSources(activePage.value), (entries, previousEntries = []) => {
+  const previousIcons = new Map(previousEntries.map(entry => [entry.id, entry.icon]))
+  entries.forEach((entry) => {
+    const forceRefresh = previousIcons.get(entry.id) !== entry.icon
+    ensureDominantColor(entry.icon, entry.title, forceRefresh)
   })
 }, { immediate: true })
 
@@ -2096,48 +2125,74 @@ onBeforeUnmount(() => {
           >
             <template v-for="item in visibleItems" :key="item.id">
               <button
-                v-if="item.type === 'app'"
+                v-if="item.type === 'app' && isDefaultAppSize(item.size)"
                 type="button"
                 data-grid-item
                 data-item-type="app"
-                :class="getAppButtonClass(item)"
+                class="group flex flex-col items-center gap-1.5 justify-self-center self-start"
+                :style="iconButtonStyle"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="absolute inset-0 -z-10 overflow-hidden rounded-[30px] border bg-white/[0.08] shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-xl" :style="getAppTileFrameStyle(item)">
-                  <div class="absolute inset-0 bg-gradient-to-br from-white/14 via-white/[0.04] to-transparent" />
-                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
-                </div>
-
-                <div class="relative flex h-full w-full min-h-0 items-center justify-center p-3 sm:p-4">
-                  <div
-                    :class="getAppTileFrameClass(item)"
-                    :style="{ backgroundColor: getAppTileBackground(item) }"
-                  >
-                    <img
-                      :src="item.icon"
-                      :alt="item.title"
-                      :class="getAppImageClass(item)"
-                      :style="getAppImageStyle(item)"
-                      @load="ensureDominantColor(item.icon, item.title)"
-                    >
-                  </div>
-                </div>
-
                 <div
-                  v-if="appSettings.showIconLabels || (appSettings.enableShortcutHints && item.shortcut)"
-                  class="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[30px] bg-gradient-to-t from-black/55 via-black/15 to-transparent px-3 pb-2.5 pt-10"
+                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                  :style="iconSurfaceStyle"
                 >
+                  <div class="absolute inset-0 -z-10 overflow-hidden border bg-white/10 backdrop-blur-xl" :style="iconBackdropStyle" />
+                  <img
+                    :src="item.icon"
+                    :alt="item.title"
+                    class="relative h-full w-full object-cover shadow-sm"
+                    :style="iconImageStyle"
+                  >
+                </div>
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >
+                  {{ item.title }}
+                </span>
+                <span
+                  v-if="appSettings.enableShortcutHints && item.shortcut"
+                  class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                >
+                  {{ item.shortcut }}
+                </span>
+              </button>
+
+              <button
+                v-else-if="item.type === 'app'"
+                type="button"
+                data-grid-item
+                data-item-type="app"
+                :class="getExpandedAppButtonClass(item)"
+                @click="openItem(item)"
+                @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
+              >
+                <div
+                  class="relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-[24px] border p-4"
+                  :style="getExpandedAppCardStyle(item)"
+                >
+                  <div class="absolute inset-0 bg-gradient-to-br from-white/12 via-white/[0.04] to-transparent" />
+                  <div class="absolute inset-x-0 top-0 h-px bg-white/20" />
+                  <img
+                    :src="item.icon"
+                    :alt="item.title"
+                    class="relative z-10 object-contain drop-shadow-[0_12px_28px_rgba(2,6,23,0.3)]"
+                    :style="largeAppIconStyle"
+                    @load="refreshDominantColor(item.icon, item.title)"
+                  >
                   <span
                     v-if="appSettings.showIconLabels"
-                    class="block w-full truncate text-center text-xs text-white/92 drop-shadow-md"
-                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                    class="relative z-10 mt-3 max-w-full truncate text-center text-sm text-white/92 drop-shadow-md"
+                    :style="getExpandedAppLabelStyle()"
                   >
                     {{ item.title }}
                   </span>
                   <span
                     v-if="appSettings.enableShortcutHints && item.shortcut"
-                    class="mx-auto mt-1 block w-max rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                    class="relative z-10 mt-2 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
                   >
                     {{ item.shortcut }}
                   </span>
@@ -2522,11 +2577,11 @@ onBeforeUnmount(() => {
         @contextmenu.stop.prevent
       >
         <ul>
-          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="createFolderFromDesktopMenu">
-            新建文件夹
-          </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openAddIconModal">
             新增图标
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="createFolderFromDesktopMenu">
+            新建文件夹
           </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openWidgetTabModal">
             小组件商店
