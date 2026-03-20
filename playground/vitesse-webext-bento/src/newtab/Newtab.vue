@@ -74,6 +74,13 @@ interface TopLevelItemLocation {
   item: DesktopItem
 }
 
+interface FolderPreviewCell {
+  id: string
+  app: AppItem | null
+  emphasis: 'primary' | 'secondary'
+  splitApps?: [AppItem | null, AppItem | null]
+}
+
 type IconModalTab = 'store' | 'custom' | 'widget'
 type IconModalMode = 'add' | 'edit'
 
@@ -353,6 +360,7 @@ const pages = useStorage<DesktopPage[]>('life-kline-hub.pages.v1', createMockPag
 const activePageId = useStorage<string>('life-kline-hub.active-page.v1', 'page-home')
 const omnibar = useStorage<string>('life-kline-hub.omnibar.v1', '')
 const savedBookmarks = useStorage<SavedBookmark[]>('life-kline-hub.bookmarks.v1', [])
+const iconColorCache = useStorage<Record<string, string>>('life-kline-hub.icon-colors.v1', {})
 const appSettings = useAppSettings()
 
 const activeFolderId = ref<string | null>(null)
@@ -399,6 +407,7 @@ const wheelPageTurnLockedUntil = ref(0)
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
+const dominantColorPending = new Set<string>()
 
 const totalPages = computed(() => pages.value.length)
 const activePageIndex = computed(() => {
@@ -513,9 +522,6 @@ const iconBackdropStyle = computed(() => ({
   borderColor: withAlpha(appSettings.value.themeColor, 0.12),
   boxShadow: `0 10px 40px ${withAlpha('#020617', 0.18)}`,
 }))
-const folderThumbRadiusStyle = computed(() => ({
-  borderRadius: `${Math.max(6, Math.round(appSettings.value.iconSize * 0.14))}px`,
-}))
 const searchWrapStyle = computed(() => ({
   maxWidth: `${clamp(Math.round(viewportWidth.value * (appSettings.value.searchWidth / 100)), 420, 960)}px`,
 }))
@@ -582,12 +588,8 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function getItemSize(item: DesktopItem) {
-  return item.size ?? '1x1'
-}
-
-function isExpandedGridSize(size: GridSize | undefined) {
-  return (size ?? '1x1') !== '1x1'
+function isSquareGridSize(size: GridSize | undefined) {
+  return ['1x1', '2x2', '4x4'].includes(size ?? '1x1')
 }
 
 function gridSpanClass(size: GridSize | undefined) {
@@ -604,6 +606,293 @@ function gridSpanClass(size: GridSize | undefined) {
   if (size === '4x4')
     return 'col-span-4 row-span-4'
   return ''
+}
+
+function buildFolderId() {
+  return `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+}
+
+function fallbackColorFromSeed(seed: string) {
+  const palette = ['#1D4ED8', '#0F766E', '#7C3AED', '#BE185D', '#B45309', '#166534', '#334155'] as const
+  return palette[Math.abs(hashString(seed || 'icon')) % palette.length]
+}
+
+function toRgbString(red: number, green: number, blue: number) {
+  return `rgb(${red}, ${green}, ${blue})`
+}
+
+async function getDominantColor(url: string, fallbackSeed = url) {
+  if (!url)
+    return fallbackColorFromSeed(fallbackSeed)
+
+  const cached = iconColorCache.value[url]
+  if (cached)
+    return cached
+
+  if (dominantColorPending.has(url))
+    return fallbackColorFromSeed(fallbackSeed)
+
+  dominantColorPending.add(url)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      if (!url.startsWith('data:'))
+        img.crossOrigin = 'anonymous'
+      img.decoding = 'async'
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error(`Failed to load image: ${url}`))
+      img.src = url
+    })
+
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context)
+      throw new Error('Canvas context unavailable')
+
+    const sampleSize = 24
+    canvas.width = sampleSize
+    canvas.height = sampleSize
+    context.drawImage(image, 0, 0, sampleSize, sampleSize)
+    const { data } = context.getImageData(0, 0, sampleSize, sampleSize)
+
+    let totalRed = 0
+    let totalGreen = 0
+    let totalBlue = 0
+    let totalWeight = 0
+
+    for (let y = 0; y < sampleSize; y++) {
+      for (let x = 0; x < sampleSize; x++) {
+        const isEdge = x === 0 || y === 0 || x === sampleSize - 1 || y === sampleSize - 1
+        if (!isEdge)
+          continue
+
+        const index = (y * sampleSize + x) * 4
+        const alpha = data[index + 3] / 255
+        if (alpha <= 0.02)
+          continue
+
+        totalRed += data[index] * alpha
+        totalGreen += data[index + 1] * alpha
+        totalBlue += data[index + 2] * alpha
+        totalWeight += alpha
+      }
+    }
+
+    const color = totalWeight
+      ? toRgbString(
+          Math.round(totalRed / totalWeight),
+          Math.round(totalGreen / totalWeight),
+          Math.round(totalBlue / totalWeight),
+        )
+      : fallbackColorFromSeed(fallbackSeed)
+
+    iconColorCache.value = {
+      ...iconColorCache.value,
+      [url]: color,
+    }
+    return color
+  }
+  catch {
+    const fallback = fallbackColorFromSeed(fallbackSeed)
+    iconColorCache.value = {
+      ...iconColorCache.value,
+      [url]: fallback,
+    }
+    return fallback
+  }
+  finally {
+    dominantColorPending.delete(url)
+  }
+}
+
+function ensureDominantColor(url: string, fallbackSeed = url) {
+  if (!url || iconColorCache.value[url] || dominantColorPending.has(url) || typeof window === 'undefined')
+    return
+
+  void getDominantColor(url, fallbackSeed)
+}
+
+function getAppTileBackground(app: AppItem) {
+  return iconColorCache.value[app.icon] ?? fallbackColorFromSeed(app.title || app.icon)
+}
+
+function getAppTileFrameClass(app: AppItem) {
+  return isSquareGridSize(app.size)
+    ? 'h-full w-full overflow-hidden rounded-[24px]'
+    : 'flex h-full w-full items-center justify-center overflow-hidden rounded-[24px]'
+}
+
+function getAppTileFrameStyle(app: AppItem) {
+  return {
+    backgroundColor: getAppTileBackground(app),
+    borderColor: withAlpha(appSettings.value.themeColor, 0.12),
+    boxShadow: `0 18px 40px ${withAlpha('#020617', 0.22)}`,
+  }
+}
+
+function getAppImageClass(app: AppItem) {
+  return isSquareGridSize(app.size)
+    ? 'h-full w-full object-cover rounded-[inherit] shadow-sm'
+    : 'h-[60%] w-[60%] object-contain drop-shadow-[0_10px_26px_rgba(2,6,23,0.28)]'
+}
+
+function getAppImageStyle(app: AppItem) {
+  if (isSquareGridSize(app.size))
+    return {}
+
+  return {
+    maxWidth: '60%',
+    maxHeight: '60%',
+  }
+}
+
+function getAppButtonClass(app: AppItem) {
+  return [
+    'group relative flex h-full w-full self-stretch justify-self-stretch transition-transform duration-300',
+    'hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]',
+    gridSpanClass(app.size),
+  ]
+}
+
+function getFolderButtonClass(folder: FolderItem) {
+  return [
+    'group relative flex h-full w-full self-stretch justify-self-stretch transition-transform duration-300',
+    'hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]',
+    gridSpanClass(folder.size),
+  ]
+}
+
+function createFolderPreviewCell(index: number, app: AppItem | null, emphasis: 'primary' | 'secondary'): FolderPreviewCell {
+  return {
+    id: `${emphasis}-${index}-${app?.id ?? 'empty'}`,
+    app,
+    emphasis,
+  }
+}
+
+function createSplitFolderPreviewCell(index: number, first: AppItem | null, second: AppItem | null): FolderPreviewCell {
+  return {
+    id: `split-${index}-${first?.id ?? 'empty'}-${second?.id ?? 'empty'}`,
+    app: null,
+    emphasis: 'secondary',
+    splitApps: [first, second],
+  }
+}
+
+function getFolderPreviewLayout(folder: FolderItem) {
+  const size = folder.size ?? '1x1'
+  const children = folder.children
+
+  if (size === '1x1') {
+    if (children.length <= 4) {
+      return {
+        shellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
+        primaryClass: 'h-full w-full',
+        secondaryShellClass: '',
+        secondaryClass: '',
+        primaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'secondary')),
+        secondaryCells: [] as FolderPreviewCell[],
+      }
+    }
+
+    return {
+      shellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
+      primaryClass: 'h-full w-full',
+      secondaryShellClass: '',
+      secondaryClass: '',
+      primaryCells: [
+        createFolderPreviewCell(0, children[0] ?? null, 'secondary'),
+        createFolderPreviewCell(1, children[1] ?? null, 'secondary'),
+        createFolderPreviewCell(2, children[2] ?? null, 'secondary'),
+        createSplitFolderPreviewCell(3, children[3] ?? null, children[4] ?? null),
+      ],
+      secondaryCells: [] as FolderPreviewCell[],
+    }
+  }
+
+  if (size === '2x1') {
+    return {
+      shellClass: 'grid h-full w-full grid-cols-[1.2fr_0.95fr] gap-2.5',
+      primaryClass: 'grid h-full w-full grid-cols-2 gap-2',
+      secondaryShellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
+      secondaryClass: 'h-full w-full',
+      primaryCells: Array.from({ length: 2 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
+      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 2] ?? null, 'secondary')),
+    }
+  }
+
+  if (size === '1x2') {
+    return {
+      shellClass: 'grid h-full w-full grid-rows-[1.15fr_0.95fr] gap-2.5',
+      primaryClass: 'grid h-full w-full grid-cols-2 gap-2',
+      secondaryShellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
+      secondaryClass: 'h-full w-full',
+      primaryCells: Array.from({ length: 2 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
+      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 2] ?? null, 'secondary')),
+    }
+  }
+
+  if (size === '2x2') {
+    return {
+      shellClass: 'grid h-full w-full grid-rows-[1.55fr_0.72fr] gap-2.5',
+      primaryClass: 'grid h-full w-full grid-cols-4 grid-rows-2 gap-2',
+      secondaryShellClass: 'grid h-full w-full grid-cols-4 gap-1.5',
+      secondaryClass: 'h-full w-full',
+      primaryCells: Array.from({ length: 8 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
+      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 8] ?? null, 'secondary')),
+    }
+  }
+
+  if (size === '4x4') {
+    return {
+      shellClass: 'grid h-full w-full grid-rows-[1.7fr_0.7fr] gap-3',
+      primaryClass: 'grid h-full w-full grid-cols-4 grid-rows-3 gap-2.5',
+      secondaryShellClass: 'grid h-full w-full grid-cols-4 gap-1.5',
+      secondaryClass: 'h-full w-full',
+      primaryCells: Array.from({ length: 12 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
+      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 12] ?? null, 'secondary')),
+    }
+  }
+
+  if (size === '4x2') {
+    return {
+      shellClass: 'grid h-full w-full grid-cols-[1.8fr_0.88fr] gap-2.5',
+      primaryClass: 'grid h-full w-full grid-cols-3 grid-rows-3 gap-2',
+      secondaryShellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
+      secondaryClass: 'h-full w-full',
+      primaryCells: Array.from({ length: 9 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
+      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 9] ?? null, 'secondary')),
+    }
+  }
+
+  return {
+    shellClass: 'grid h-full w-full grid-rows-[1.8fr_0.78fr] gap-2.5',
+    primaryClass: 'grid h-full w-full grid-cols-3 grid-rows-3 gap-2',
+    secondaryShellClass: 'grid h-full w-full grid-cols-4 gap-1.5',
+    secondaryClass: 'h-full w-full',
+    primaryCells: Array.from({ length: 9 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
+    secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 9] ?? null, 'secondary')),
+  }
+}
+
+function getFolderPreviewSurfaceStyle() {
+  return {
+    borderColor: withAlpha(appSettings.value.themeColor, 0.16),
+    boxShadow: `0 22px 52px ${withAlpha('#020617', 0.22)}`,
+    backgroundColor: withAlpha('#FFFFFF', 0.12),
+  }
+}
+
+function getFolderPreviewCardClass(cell: FolderPreviewCell) {
+  return cell.emphasis === 'primary'
+    ? 'flex h-full w-full items-center justify-center overflow-hidden rounded-[18px] bg-white/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+    : 'flex h-full w-full items-center justify-center overflow-hidden rounded-[14px] bg-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+}
+
+function getFolderPreviewImageClass(cell: FolderPreviewCell) {
+  return cell.emphasis === 'primary'
+    ? 'h-full w-full object-cover'
+    : 'h-[72%] w-[72%] object-contain'
 }
 
 function updateClock() {
@@ -1115,6 +1404,7 @@ function normalizeAppForm(form: IconModalForm): AppItem {
     id: buildAppId(),
     type: 'app',
     title,
+    size: '1x1',
     url,
     icon,
     desc: form.desc.trim(),
@@ -1429,6 +1719,33 @@ async function openDesktopMenu(event: MouseEvent) {
   })
 }
 
+function createFolderFromDesktopMenu() {
+  const page = activePage.value
+  if (!page)
+    return
+
+  const pageIndex = pages.value.findIndex(item => item.id === page.id)
+  if (pageIndex < 0)
+    return
+
+  const nextPages = [...pages.value]
+  nextPages[pageIndex] = {
+    ...page,
+    items: [
+      ...page.items,
+      {
+        id: buildFolderId(),
+        type: 'folder',
+        title: `新建文件夹 ${page.items.filter(item => item.type === 'folder').length + 1}`,
+        size: '1x1',
+        children: [],
+      } satisfies FolderItem,
+    ],
+  }
+  pages.value = nextPages
+  closeDesktopMenu()
+}
+
 function openSettings() {
   closeContextMenu()
   closeDesktopMenu()
@@ -1619,6 +1936,18 @@ watch(keyword, () => {
   closeIconModal()
 })
 
+watch(visibleItems, (items) => {
+  items.forEach((item) => {
+    if (isAppItem(item)) {
+      ensureDominantColor(item.icon, item.title)
+      return
+    }
+
+    if (isFolderItem(item))
+      item.children.forEach(child => ensureDominantColor(child.icon, child.title))
+  })
+}, { immediate: true })
+
 watch(activePageId, () => {
   closeContextMenu()
   closeDesktopMenu()
@@ -1771,52 +2100,44 @@ onBeforeUnmount(() => {
                 type="button"
                 data-grid-item
                 data-item-type="app"
-                class="group relative flex w-full justify-self-stretch"
-                :class="[gridSpanClass(getItemSize(item)), isExpandedGridSize(getItemSize(item)) ? 'h-full items-center justify-center self-stretch' : 'flex-col items-center self-start']"
+                :class="getAppButtonClass(item)"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div :class="isExpandedGridSize(getItemSize(item)) ? 'flex h-full w-full items-center justify-center' : ''">
+                <div class="absolute inset-0 -z-10 overflow-hidden rounded-[30px] border bg-white/[0.08] shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-xl" :style="getAppTileFrameStyle(item)">
+                  <div class="absolute inset-0 bg-gradient-to-br from-white/14 via-white/[0.04] to-transparent" />
+                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
+                </div>
+
+                <div class="relative flex h-full w-full min-h-0 items-center justify-center p-3 sm:p-4">
                   <div
-                    class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                    :style="iconSurfaceStyle"
+                    :class="getAppTileFrameClass(item)"
+                    :style="{ backgroundColor: getAppTileBackground(item) }"
                   >
-                    <div class="absolute inset-0 -z-10 overflow-hidden bg-white/10 border backdrop-blur-xl" :style="iconBackdropStyle" />
                     <img
                       :src="item.icon"
                       :alt="item.title"
-                      class="relative h-full w-full object-cover shadow-sm"
-                      :style="iconImageStyle"
+                      :class="getAppImageClass(item)"
+                      :style="getAppImageStyle(item)"
+                      @load="ensureDominantColor(item.icon, item.title)"
                     >
                   </div>
                 </div>
-                <template v-if="!isExpandedGridSize(getItemSize(item))">
-                  <span
-                    v-if="appSettings.showIconLabels"
-                    class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
-                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                  >
-                    {{ item.title }}
-                  </span>
-                  <span
-                    v-if="appSettings.enableShortcutHints && item.shortcut"
-                    class="mt-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
-                  >
-                    {{ item.shortcut }}
-                  </span>
-                </template>
 
-                <div v-else class="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-3 pb-1.5">
+                <div
+                  v-if="appSettings.showIconLabels || (appSettings.enableShortcutHints && item.shortcut)"
+                  class="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[30px] bg-gradient-to-t from-black/55 via-black/15 to-transparent px-3 pb-2.5 pt-10"
+                >
                   <span
                     v-if="appSettings.showIconLabels"
-                    class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                    class="block w-full truncate text-center text-xs text-white/92 drop-shadow-md"
                     :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                   >
                     {{ item.title }}
                   </span>
                   <span
                     v-if="appSettings.enableShortcutHints && item.shortcut"
-                    class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                    class="mx-auto mt-1 block w-max rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
                   >
                     {{ item.shortcut }}
                   </span>
@@ -1828,43 +2149,74 @@ onBeforeUnmount(() => {
                 type="button"
                 data-grid-item
                 data-item-type="folder"
-                class="group relative flex w-full justify-self-stretch"
-                :class="[gridSpanClass(getItemSize(item)), isExpandedGridSize(getItemSize(item)) ? 'h-full items-center justify-center self-stretch' : 'flex-col items-center self-start']"
+                :class="getFolderButtonClass(item)"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div :class="isExpandedGridSize(getItemSize(item)) ? 'flex h-full w-full items-center justify-center' : ''">
+                <div class="absolute inset-0 -z-10 overflow-hidden rounded-[30px] border bg-white/[0.08] shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-xl" :style="getFolderPreviewSurfaceStyle(item)">
+                  <div class="absolute inset-0 bg-gradient-to-br from-white/14 via-white/[0.06] to-transparent" />
+                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
+                </div>
+
+                <div class="relative flex h-full w-full min-h-0 p-3 sm:p-4">
                   <div
-                    class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                    :style="iconSurfaceStyle"
+                    class="relative h-full w-full overflow-hidden rounded-[24px] border bg-white/20 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md"
+                    :style="getFolderPreviewSurfaceStyle(item)"
                   >
-                    <div class="absolute inset-0 -z-10 overflow-hidden bg-white/[0.18] border backdrop-blur-xl" :style="iconBackdropStyle" />
-                    <div class="relative grid h-full w-full grid-cols-3 gap-1 p-2">
-                      <div
-                        v-for="child in item.children.slice(0, 6)"
-                        :key="child.id"
-                        class="overflow-hidden bg-white/[0.12]"
-                        :style="folderThumbRadiusStyle"
-                      >
-                        <img
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                        >
+                    <template v-for="layout in [getFolderPreviewLayout(item)]" :key="layout.shellClass + item.id">
+                      <div :class="layout.shellClass">
+                        <div :class="layout.primaryClass">
+                          <template v-for="cell in layout.primaryCells" :key="cell.id">
+                            <div v-if="cell.splitApps" class="grid h-full w-full grid-rows-2 gap-1.5 rounded-[14px] bg-white/[0.08] p-1">
+                              <div
+                                v-for="splitApp in cell.splitApps"
+                                :key="splitApp?.id ?? `${cell.id}-empty`"
+                                class="flex items-center justify-center overflow-hidden rounded-[10px] bg-white/[0.12]"
+                              >
+                                <img
+                                  v-if="splitApp"
+                                  :src="splitApp.icon"
+                                  :alt="splitApp.title"
+                                  class="h-[72%] w-[72%] object-contain"
+                                  @load="ensureDominantColor(splitApp.icon, splitApp.title)"
+                                >
+                              </div>
+                            </div>
+
+                            <div v-else :class="getFolderPreviewCardClass(cell)">
+                              <img
+                                v-if="cell.app"
+                                :src="cell.app.icon"
+                                :alt="cell.app.title"
+                                :class="getFolderPreviewImageClass(cell)"
+                                @load="ensureDominantColor(cell.app.icon, cell.app.title)"
+                              >
+                            </div>
+                          </template>
+                        </div>
+
+                        <div v-if="layout.secondaryCells.length" :class="layout.secondaryShellClass">
+                          <div v-for="cell in layout.secondaryCells" :key="cell.id" :class="[getFolderPreviewCardClass(cell), layout.secondaryClass]">
+                            <img
+                              v-if="cell.app"
+                              :src="cell.app.icon"
+                              :alt="cell.app.title"
+                              :class="getFolderPreviewImageClass(cell)"
+                              @load="ensureDominantColor(cell.app.icon, cell.app.title)"
+                            >
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    </template>
                   </div>
                 </div>
-                <span
-                  v-if="appSettings.showIconLabels && !isExpandedGridSize(getItemSize(item))"
-                  class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
-                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+
+                <div
+                  v-if="appSettings.showIconLabels"
+                  class="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[30px] bg-gradient-to-t from-black/55 via-black/15 to-transparent px-3 pb-2.5 pt-10"
                 >
-                  {{ item.title }}
-                </span>
-                <div v-else-if="appSettings.showIconLabels" class="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-1.5">
                   <span
-                    class="block w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                    class="block w-full truncate text-center text-xs text-white/92 drop-shadow-md"
                     :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                   >
                     {{ item.title }}
@@ -2170,6 +2522,9 @@ onBeforeUnmount(() => {
         @contextmenu.stop.prevent
       >
         <ul>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="createFolderFromDesktopMenu">
+            新建文件夹
+          </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openAddIconModal">
             新增图标
           </li>
