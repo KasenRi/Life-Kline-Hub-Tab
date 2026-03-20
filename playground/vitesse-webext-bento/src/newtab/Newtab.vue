@@ -2,6 +2,8 @@
 import Sortable, { type SortableEvent } from 'sortablejs'
 import { onClickOutside, useStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import SettingsModal from '~/components/SettingsModal.vue'
+import { useAppSettings } from '~/composables/useAppSettings'
 
 type ItemType = 'app' | 'folder' | 'widget'
 type WidgetSize = '1x1' | '1x2' | '2x1' | '2x2' | '2x4'
@@ -339,10 +341,12 @@ const pages = useStorage<DesktopPage[]>('life-kline-hub.pages.v1', createMockPag
 const activePageId = useStorage<string>('life-kline-hub.active-page.v1', 'page-home')
 const omnibar = useStorage<string>('life-kline-hub.omnibar.v1', '')
 const savedBookmarks = useStorage<SavedBookmark[]>('life-kline-hub.bookmarks.v1', [])
+const appSettings = useAppSettings()
 
 const activeFolderId = ref<string | null>(null)
 const clock = ref('')
 const dateLabel = ref('')
+const isSettingsOpen = ref(false)
 const contextMenu = ref<{ show: boolean, x: number, y: number, targetId: string | null }>({
   show: false,
   x: 0,
@@ -493,6 +497,11 @@ function closeIconModal() {
 }
 
 function openUrl(url: string) {
+  if (appSettings.value.openLinksInNewTab) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
   window.location.assign(url)
 }
 
@@ -945,7 +954,7 @@ function fetchIconForModal() {
 }
 
 function autoFetchIcon() {
-  if (iconModal.value.form.icon.trim())
+  if (!appSettings.value.autoFetchFavicon || iconModal.value.form.icon.trim())
     return
 
   const target = buildNormalizedUrl(iconModal.value.form.url)
@@ -1046,7 +1055,7 @@ function updateContextWidgetSize(size: WidgetSize) {
 }
 
 async function openDesktopMenu(event: MouseEvent) {
-  if (iconModal.value.show || activeFolder.value)
+  if (iconModal.value.show || activeFolder.value || isSettingsOpen.value)
     return
 
   const target = event.target as HTMLElement | null
@@ -1071,21 +1080,7 @@ async function openDesktopMenu(event: MouseEvent) {
 function openSettings() {
   closeContextMenu()
   closeDesktopMenu()
-
-  const browserApi = globalThis.browser as { runtime?: { openOptionsPage?: () => Promise<void> } } | undefined
-  const chromeApi = globalThis.chrome as { runtime?: { openOptionsPage?: () => void } } | undefined
-
-  if (browserApi?.runtime?.openOptionsPage) {
-    void browserApi.runtime.openOptionsPage()
-    return
-  }
-
-  if (chromeApi?.runtime?.openOptionsPage) {
-    chromeApi.runtime.openOptionsPage()
-    return
-  }
-
-  window.open(new URL('../options/index.html', window.location.href).href, '_blank', 'noopener,noreferrer')
+  isSettingsOpen.value = true
 }
 
 function findMatchedApp(search: string) {
@@ -1191,6 +1186,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
     closeDesktopMenu()
     closeIconModal()
     closeFolder()
+    isSettingsOpen.value = false
   }
 }
 
@@ -1273,11 +1269,11 @@ onBeforeUnmount(() => {
             </p>
           </div>
 
-          <div class="hidden text-right sm:block">
+          <div v-if="appSettings.showClock" class="hidden text-right sm:block">
             <p class="text-4xl font-semibold tracking-tight text-white/95 drop-shadow-md">
               {{ clock }}
             </p>
-            <p class="mt-1 text-sm text-white/75 drop-shadow-md">
+            <p v-if="appSettings.showDate" class="mt-1 text-sm text-white/75 drop-shadow-md">
               {{ dateLabel }}
             </p>
             <p class="mt-3 text-xs text-white/65 drop-shadow-md">
@@ -1286,7 +1282,12 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <form class="mt-8 flex justify-center sm:mt-10" @submit.prevent="submitOmnibar">
+        <form
+          v-if="appSettings.showSearch"
+          class="mt-8 flex justify-center sm:mt-10"
+          :style="{ opacity: appSettings.searchOpacity / 100 }"
+          @submit.prevent="submitOmnibar"
+        >
           <div class="relative w-full max-w-3xl md:w-[56%]">
             <input
               ref="omnibarRef"
@@ -1296,6 +1297,7 @@ onBeforeUnmount(() => {
               autocomplete="off"
               spellcheck="false"
               class="h-[3.75rem] w-full rounded-full border border-white/10 bg-black/[0.28] pl-7 pr-24 text-[15px] text-white placeholder:text-white/40 shadow-[0_20px_80px_rgba(3,7,18,0.35)] backdrop-blur-md outline-none transition focus:border-white/20 focus:ring-4 focus:ring-sky-200/25"
+              :style="{ borderRadius: `${appSettings.searchRadius}px` }"
             >
 
             <button
@@ -1335,7 +1337,11 @@ onBeforeUnmount(() => {
                     class="relative h-full w-full rounded-2xl object-cover shadow-sm"
                   >
                 </div>
-                <span class="w-full truncate text-center text-xs text-white/90 drop-shadow-md">
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >
                   {{ item.title }}
                 </span>
               </button>
@@ -1365,7 +1371,11 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </div>
-                <span class="w-full truncate text-center text-xs text-white/90 drop-shadow-md">
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >
                   {{ item.title }}
                 </span>
               </button>
@@ -1505,7 +1515,11 @@ onBeforeUnmount(() => {
                     class="relative h-full w-full rounded-2xl object-cover shadow-sm"
                   >
                 </div>
-                <span class="w-full truncate text-center text-xs text-white/90 drop-shadow-md">
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >
                   {{ child.title }}
                 </span>
               </button>
@@ -1832,5 +1846,7 @@ onBeforeUnmount(() => {
       class="hidden"
       @change="handleIconUpload"
     >
+
+    <SettingsModal v-if="isSettingsOpen" @close="isSettingsOpen = false" />
   </div>
 </template>
