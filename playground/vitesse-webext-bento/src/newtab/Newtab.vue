@@ -350,7 +350,6 @@ const contextMenu = ref<{ show: boolean, x: number, y: number, targetId: string 
   targetId: null,
 })
 const contextMenuTargetType = ref<ItemType | null>(null)
-const hoverSizeMenu = ref(false)
 const desktopMenu = ref({
   show: false,
   x: 0,
@@ -469,7 +468,6 @@ function closeContextMenu() {
   contextMenu.value.show = false
   contextMenu.value.targetId = null
   contextMenuTargetType.value = null
-  hoverSizeMenu.value = false
 }
 
 function closeDesktopMenu() {
@@ -1013,7 +1011,6 @@ async function openContextMenu(event: MouseEvent, targetId: string, targetType: 
     targetId,
   }
   contextMenuTargetType.value = targetType
-  hoverSizeMenu.value = false
 
   await positionMenu(contextMenuRef, { x: event.clientX, y: event.clientY }, ({ x, y }) => {
     contextMenu.value.x = x
@@ -1377,17 +1374,17 @@ onBeforeUnmount(() => {
                 v-else
                 data-grid-item
                 data-item-type="widget"
-                class="group relative isolate cursor-pointer transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                class="group relative isolate h-full w-full cursor-pointer self-stretch justify-self-stretch transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
                 :class="widgetSpanClass(item.size)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="absolute inset-0 -z-10 overflow-hidden rounded-[24px] bg-white/[0.16] backdrop-blur-xl border border-white/[0.14] shadow-[0_26px_80px_rgba(15,23,42,0.18)]">
+                <div class="absolute inset-0 -z-10 h-full w-full overflow-hidden rounded-[24px] border border-white/[0.14] bg-white/[0.16] shadow-[0_26px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
                   <div class="absolute inset-0" :class="item.accentClass" />
                   <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full blur-3xl" :class="item.glowClass" />
                   <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
                 </div>
 
-                <div class="relative flex h-full flex-col overflow-hidden p-4">
+                <div class="relative flex h-full w-full min-h-0 flex-col justify-between overflow-hidden p-4">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="text-[11px] uppercase tracking-[0.28em] text-white/60">
@@ -1407,7 +1404,7 @@ onBeforeUnmount(() => {
                     {{ item.value }}
                   </div>
 
-                  <div class="mt-4 flex-1 space-y-2 overflow-y-auto text-sm text-white/88 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div class="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto text-sm text-white/88 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <p
                       v-for="line in item.lines"
                       :key="line"
@@ -1568,9 +1565,7 @@ onBeforeUnmount(() => {
             在新标签页打开
           </li>
           <li
-            class="relative cursor-pointer px-4 py-2 transition-colors hover:bg-white/10"
-            @mouseenter="hoverSizeMenu = true"
-            @mouseleave="hoverSizeMenu = false"
+            class="group relative cursor-pointer px-4 py-2 transition-colors hover:bg-white/10"
           >
             <div class="flex items-center justify-between">
               <span>尺寸</span>
@@ -1578,26 +1573,28 @@ onBeforeUnmount(() => {
             </div>
 
             <div
-              v-if="hoverSizeMenu && contextMenuTargetType === 'widget'"
-              class="absolute left-full top-0 ml-1 w-28 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
+              v-if="contextMenuTargetType === 'widget'"
+              class="absolute left-full top-0 hidden pl-2 group-hover:block"
             >
-              <ul>
-                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x1')">
-                  XS 1x1
-                </li>
-                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x2')">
-                  S 1x2
-                </li>
-                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x1')">
-                  M 2x1
-                </li>
-                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x2')">
-                  L 2x2
-                </li>
-                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x4')">
-                  XL 2x4
-                </li>
-              </ul>
+              <div class="w-28 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl">
+                <ul>
+                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x1')">
+                    XS 1x1
+                  </li>
+                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x2')">
+                    S 1x2
+                  </li>
+                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x1')">
+                    M 2x1
+                  </li>
+                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x2')">
+                    L 2x2
+                  </li>
+                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x4')">
+                    XL 2x4
+                  </li>
+                </ul>
+              </div>
             </div>
           </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="cloneContextTarget">
