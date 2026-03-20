@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Sortable, { type SortableEvent } from 'sortablejs'
-import { useStorage } from '@vueuse/core'
+import { onClickOutside, useStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type ItemType = 'app' | 'folder' | 'widget'
@@ -40,6 +40,20 @@ interface DesktopPage {
   id: string
   title: string
   items: DesktopItem[]
+}
+
+interface SavedBookmark {
+  id: string
+  title: string
+  url: string
+  icon: string
+}
+
+interface AppLocation {
+  pageIndex: number
+  itemIndex: number
+  childIndex: number | null
+  app: AppItem
 }
 
 const scenicWallpaper = svgToDataUrl(`
@@ -303,12 +317,20 @@ function isFolderItem(item: DesktopItem): item is FolderItem {
 const pages = useStorage<DesktopPage[]>('life-kline-hub.pages.v1', createMockPages())
 const activePageId = useStorage<string>('life-kline-hub.active-page.v1', 'page-home')
 const omnibar = useStorage<string>('life-kline-hub.omnibar.v1', '')
+const savedBookmarks = useStorage<SavedBookmark[]>('life-kline-hub.bookmarks.v1', [])
 
 const activeFolderId = ref<string | null>(null)
 const clock = ref('')
 const dateLabel = ref('')
+const contextMenu = ref<{ show: boolean, x: number, y: number, targetId: string | null }>({
+  show: false,
+  x: 0,
+  y: 0,
+  targetId: null,
+})
 const omnibarRef = ref<HTMLInputElement | null>(null)
 const gridRef = ref<HTMLElement | null>(null)
+const contextMenuRef = ref<HTMLElement | null>(null)
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
@@ -348,6 +370,7 @@ const activeFolder = computed<FolderItem | null>(() => {
   const folder = page.items.find(item => item.id === activeFolderId.value)
   return folder && isFolderItem(folder) ? folder : null
 })
+const contextTargetApp = computed(() => findAppLocation(contextMenu.value.targetId)?.app ?? null)
 
 function widgetSpanClass(size: WidgetSize) {
   return size === '2x4' ? 'col-span-2 row-span-4' : 'col-span-2 row-span-2'
@@ -371,16 +394,24 @@ function closeFolder() {
   activeFolderId.value = null
 }
 
+function closeContextMenu() {
+  contextMenu.value.show = false
+  contextMenu.value.targetId = null
+}
+
 function openUrl(url: string) {
   window.location.assign(url)
 }
 
 function openApp(app: AppItem) {
+  closeContextMenu()
   closeFolder()
   openUrl(app.url)
 }
 
 function openItem(item: DesktopItem) {
+  closeContextMenu()
+
   if (isAppItem(item)) {
     openApp(item)
     return
@@ -388,6 +419,207 @@ function openItem(item: DesktopItem) {
 
   if (isFolderItem(item))
     activeFolderId.value = item.id
+}
+
+function openItemInNewTab(app: AppItem) {
+  closeContextMenu()
+  window.open(app.url, '_blank', 'noopener,noreferrer')
+}
+
+function buildCopyId(sourceId: string) {
+  return `${sourceId}-copy-${Date.now().toString(36)}`
+}
+
+function findAppLocation(targetId: string | null): AppLocation | null {
+  const page = activePage.value
+  if (!page || !targetId)
+    return null
+
+  const pageIndex = pages.value.findIndex(item => item.id === page.id)
+  if (pageIndex < 0)
+    return null
+
+  for (const [itemIndex, item] of page.items.entries()) {
+    if (isAppItem(item) && item.id === targetId) {
+      return {
+        pageIndex,
+        itemIndex,
+        childIndex: null,
+        app: item,
+      }
+    }
+
+    if (isFolderItem(item)) {
+      const childIndex = item.children.findIndex(child => child.id === targetId)
+      if (childIndex >= 0) {
+        return {
+          pageIndex,
+          itemIndex,
+          childIndex,
+          app: item.children[childIndex],
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function cloneContextTarget() {
+  const location = findAppLocation(contextMenu.value.targetId)
+  if (!location)
+    return
+
+  const page = activePage.value
+  if (!page)
+    return
+
+  const duplicate: AppItem = {
+    ...location.app,
+    id: buildCopyId(location.app.id),
+    title: `${location.app.title} 副本`,
+  }
+
+  const nextPages = [...pages.value]
+  const nextPage: DesktopPage = {
+    ...page,
+    items: [...page.items],
+  }
+
+  if (location.childIndex == null) {
+    nextPage.items.splice(location.itemIndex + 1, 0, duplicate)
+  }
+  else {
+    const folder = nextPage.items[location.itemIndex]
+    if (!folder || !isFolderItem(folder))
+      return
+
+    const nextChildren = [...folder.children]
+    nextChildren.splice(location.childIndex + 1, 0, duplicate)
+    nextPage.items[location.itemIndex] = {
+      ...folder,
+      children: nextChildren,
+    }
+  }
+
+  nextPages[location.pageIndex] = nextPage
+  pages.value = nextPages
+  closeContextMenu()
+}
+
+function deleteContextTarget() {
+  const location = findAppLocation(contextMenu.value.targetId)
+  if (!location)
+    return
+
+  const page = activePage.value
+  if (!page)
+    return
+
+  const nextPages = [...pages.value]
+  const nextPage: DesktopPage = {
+    ...page,
+    items: [...page.items],
+  }
+
+  if (location.childIndex == null) {
+    nextPage.items.splice(location.itemIndex, 1)
+  }
+  else {
+    const folder = nextPage.items[location.itemIndex]
+    if (!folder || !isFolderItem(folder))
+      return
+
+    const nextChildren = [...folder.children]
+    nextChildren.splice(location.childIndex, 1)
+    nextPage.items[location.itemIndex] = {
+      ...folder,
+      children: nextChildren,
+    }
+
+    if (activeFolderId.value === folder.id && nextChildren.length === 0)
+      closeFolder()
+  }
+
+  nextPages[location.pageIndex] = nextPage
+  pages.value = nextPages
+  closeContextMenu()
+}
+
+function importContextTargetToBookmarks() {
+  const app = contextTargetApp.value
+  if (!app)
+    return
+
+  if (!savedBookmarks.value.some(bookmark => bookmark.url === app.url)) {
+    savedBookmarks.value = [
+      ...savedBookmarks.value,
+      {
+        id: `bookmark-${app.id}`,
+        title: app.title,
+        url: app.url,
+        icon: app.icon,
+      },
+    ]
+  }
+
+  const browserApi = globalThis.browser as { runtime?: { id?: string }, bookmarks?: { create: (input: { title: string, url: string }) => Promise<unknown> } } | undefined
+  const chromeApi = globalThis.chrome as { runtime?: { id?: string }, bookmarks?: { create: (input: { title: string, url: string }, callback?: () => void) => void } } | undefined
+
+  try {
+    if (browserApi?.runtime?.id && browserApi.bookmarks?.create)
+      void browserApi.bookmarks.create({ title: app.title, url: app.url })
+    else if (chromeApi?.runtime?.id && chromeApi.bookmarks?.create)
+      chromeApi.bookmarks.create({ title: app.title, url: app.url })
+  }
+  catch (error) {
+    console.warn('Failed to import bookmark via extension API.', error)
+  }
+
+  closeContextMenu()
+}
+
+function markContextAction(label: string) {
+  if (contextTargetApp.value)
+    console.info(`[Life Kline Hub] ${label}: ${contextTargetApp.value.title}`)
+  closeContextMenu()
+}
+
+async function openContextMenu(event: MouseEvent, targetId: string) {
+  const margin = 12
+  contextMenu.value = {
+    show: true,
+    x: event.clientX,
+    y: event.clientY,
+    targetId,
+  }
+
+  await nextTick()
+  const menu = contextMenuRef.value
+  if (!menu)
+    return
+
+  contextMenu.value.x = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin)
+  contextMenu.value.y = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin)
+}
+
+function openSettings() {
+  closeContextMenu()
+
+  const browserApi = globalThis.browser as { runtime?: { openOptionsPage?: () => Promise<void> } } | undefined
+  const chromeApi = globalThis.chrome as { runtime?: { openOptionsPage?: () => void } } | undefined
+
+  if (browserApi?.runtime?.openOptionsPage) {
+    void browserApi.runtime.openOptionsPage()
+    return
+  }
+
+  if (chromeApi?.runtime?.openOptionsPage) {
+    chromeApi.runtime.openOptionsPage()
+    return
+  }
+
+  window.open(new URL('../options/index.html', window.location.href).href, '_blank', 'noopener,noreferrer')
 }
 
 function findMatchedApp(search: string) {
@@ -488,9 +720,16 @@ function handleWindowKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (event.key === 'Escape')
+  if (event.key === 'Escape') {
+    closeContextMenu()
     closeFolder()
+  }
 }
+
+onClickOutside(contextMenuRef, () => {
+  if (contextMenu.value.show)
+    closeContextMenu()
+})
 
 watch(() => `${activePageId.value}:${visibleItems.value.map(item => item.id).join('|')}`, async () => {
   await nextTick()
@@ -499,10 +738,12 @@ watch(() => `${activePageId.value}:${visibleItems.value.map(item => item.id).joi
 
 watch(keyword, () => {
   syncSortableState()
+  closeContextMenu()
   closeFolder()
 })
 
 watch(activePageId, () => {
+  closeContextMenu()
   closeFolder()
 })
 
@@ -525,8 +766,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="relative min-h-screen overflow-hidden bg-slate-950 bg-cover bg-center bg-no-repeat text-white"
+    class="relative isolate min-h-screen overflow-hidden bg-slate-950 bg-cover bg-center bg-no-repeat text-white"
     :style="{ backgroundImage: `url(${scenicWallpaper})` }"
+    @contextmenu.prevent="closeContextMenu"
   >
     <div class="absolute inset-0 bg-gradient-to-b from-slate-950/[0.04] via-slate-950/[0.12] to-slate-950/[0.32]" />
     <div class="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-slate-950/[0.32] to-transparent" />
@@ -600,8 +842,9 @@ onBeforeUnmount(() => {
                 data-grid-item
                 class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
                 @click="openItem(item)"
+                @contextmenu.stop.prevent="openContextMenu($event, item.id)"
               >
-                <div class="h-14 w-14 overflow-hidden rounded-2xl shadow-[0_12px_35px_rgba(15,23,42,0.22)] transition-transform duration-300 group-hover:scale-105">
+                <div class="h-14 w-14 overflow-hidden rounded-2xl shadow-[0_12px_35px_rgba(15,23,42,0.22)] transition-transform duration-300 group-hover:scale-105 transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform">
                   <img
                     :src="item.icon"
                     :alt="item.title"
@@ -620,7 +863,7 @@ onBeforeUnmount(() => {
                 class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
                 @click="openItem(item)"
               >
-                <div class="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.18] shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition-transform duration-300 group-hover:scale-105 backdrop-blur-md">
+                <div class="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.18] shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition-transform duration-300 group-hover:scale-105 transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform backdrop-blur-md">
                   <div class="grid h-full w-full grid-cols-3 gap-1 p-2">
                     <div
                       v-for="child in item.children.slice(0, 6)"
@@ -643,7 +886,7 @@ onBeforeUnmount(() => {
               <article
                 v-else
                 data-grid-item
-                class="group relative overflow-hidden rounded-[24px] border border-white/[0.14] bg-white/[0.16] p-4 shadow-[0_26px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01]"
+                class="group relative overflow-hidden rounded-[24px] border border-white/[0.14] bg-white/[0.16] p-4 shadow-[0_26px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform"
                 :class="widgetSpanClass(item.size)"
               >
                 <div class="absolute inset-0" :class="item.accentClass" />
@@ -759,8 +1002,9 @@ onBeforeUnmount(() => {
                 type="button"
                 class="group flex flex-col items-center gap-2"
                 @click="openApp(child)"
+                @contextmenu.stop.prevent="openContextMenu($event, child.id)"
               >
-                <div class="h-14 w-14 overflow-hidden rounded-2xl transition-transform duration-300 group-hover:scale-105">
+                <div class="h-14 w-14 overflow-hidden rounded-2xl transition-transform duration-300 group-hover:scale-105 transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform">
                   <img
                     :src="child.icon"
                     :alt="child.title"
@@ -774,6 +1018,69 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+      </div>
+    </transition>
+
+    <button
+      type="button"
+      title="设置"
+      aria-label="打开设置"
+      class="fixed bottom-8 right-8 z-40 flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/10 bg-black/20 text-white/70 shadow-lg backdrop-blur-md transition-all hover:scale-110 hover:bg-white/20 hover:text-white transform-gpu"
+      @click="openSettings"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="h-5 w-5"
+      >
+        <path d="M12 3.75 13.3 5.7a1 1 0 0 0 .86.46h2.2a1 1 0 0 1 .9.56l.88 1.77a1 1 0 0 0 .74.54l2.14.31a1 1 0 0 1 .55 1.7l-1.55 1.51a1 1 0 0 0-.29.88l.36 2.13a1 1 0 0 1-1.45 1.05l-1.96-1.03a1 1 0 0 0-.94 0l-1.96 1.03a1 1 0 0 1-1.45-1.05l.36-2.13a1 1 0 0 0-.29-.88L2.17 10.3a1 1 0 0 1 .55-1.7l2.14-.31a1 1 0 0 0 .74-.54l.88-1.77a1 1 0 0 1 .9-.56h2.2a1 1 0 0 0 .86-.46L12 3.75Z" />
+        <circle cx="12" cy="12" r="3.1" />
+      </svg>
+    </button>
+
+    <transition
+      enter-active-class="transition duration-150 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-100 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div
+        v-if="contextMenu.show"
+        ref="contextMenuRef"
+        class="fixed z-50 w-48 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
+        :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+        @contextmenu.stop.prevent
+      >
+        <ul>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('编辑')">
+            编辑
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="contextTargetApp && openItemInNewTab(contextTargetApp)">
+            在新标签页打开
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('尺寸')">
+            尺寸
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="cloneContextTarget">
+            克隆
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="importContextTargetToBookmarks">
+            导入到书签
+          </li>
+          <div class="my-1 h-px bg-white/10" />
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('批量编辑')">
+            批量编辑
+          </li>
+          <li class="cursor-pointer px-4 py-2 text-rose-200 transition-colors hover:bg-white/10" @click="deleteContextTarget">
+            删除
+          </li>
+        </ul>
       </div>
     </transition>
   </div>
