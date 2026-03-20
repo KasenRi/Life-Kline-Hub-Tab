@@ -4,7 +4,7 @@ import { onClickOutside, useStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type ItemType = 'app' | 'folder' | 'widget'
-type WidgetSize = '2x2' | '2x4'
+type WidgetSize = '1x1' | '1x2' | '2x1' | '2x2' | '2x4'
 
 interface BaseItem {
   id: string
@@ -56,6 +56,12 @@ interface AppLocation {
   itemIndex: number
   childIndex: number | null
   app: AppItem
+}
+
+interface WidgetLocation {
+  pageIndex: number
+  itemIndex: number
+  widget: WidgetItem
 }
 
 type IconModalTab = 'store' | 'custom' | 'widget'
@@ -343,6 +349,8 @@ const contextMenu = ref<{ show: boolean, x: number, y: number, targetId: string 
   y: 0,
   targetId: null,
 })
+const contextMenuTargetType = ref<ItemType | null>(null)
+const hoverSizeMenu = ref(false)
 const desktopMenu = ref({
   show: false,
   x: 0,
@@ -418,6 +426,7 @@ const activeFolder = computed<FolderItem | null>(() => {
   return folder && isFolderItem(folder) ? folder : null
 })
 const contextTargetApp = computed(() => findAppLocation(contextMenu.value.targetId)?.app ?? null)
+const contextTargetWidget = computed(() => findWidgetLocation(contextMenu.value.targetId)?.widget ?? null)
 const iconPreviewSrc = computed(() => {
   const providedIcon = iconModal.value.form.icon.trim()
   if (providedIcon)
@@ -427,7 +436,15 @@ const iconPreviewSrc = computed(() => {
 })
 
 function widgetSpanClass(size: WidgetSize) {
-  return size === '2x4' ? 'col-span-2 row-span-4' : 'col-span-2 row-span-2'
+  if (size === '1x2')
+    return 'row-span-2'
+  if (size === '2x1')
+    return 'col-span-2'
+  if (size === '2x2')
+    return 'col-span-2 row-span-2'
+  if (size === '2x4')
+    return 'col-span-4 row-span-2'
+  return ''
 }
 
 function updateClock() {
@@ -451,6 +468,8 @@ function closeFolder() {
 function closeContextMenu() {
   contextMenu.value.show = false
   contextMenu.value.targetId = null
+  contextMenuTargetType.value = null
+  hoverSizeMenu.value = false
 }
 
 function closeDesktopMenu() {
@@ -575,7 +594,55 @@ function findAppLocation(targetId: string | null): AppLocation | null {
   return null
 }
 
+function findWidgetLocation(targetId: string | null): WidgetLocation | null {
+  const page = activePage.value
+  if (!page || !targetId)
+    return null
+
+  const pageIndex = pages.value.findIndex(item => item.id === page.id)
+  if (pageIndex < 0)
+    return null
+
+  const itemIndex = page.items.findIndex(item => item.id === targetId && item.type === 'widget')
+  if (itemIndex < 0)
+    return null
+
+  const widget = page.items[itemIndex]
+  if (!widget || widget.type !== 'widget')
+    return null
+
+  return {
+    pageIndex,
+    itemIndex,
+    widget,
+  }
+}
+
 function cloneContextTarget() {
+  const widgetLocation = findWidgetLocation(contextMenu.value.targetId)
+  if (widgetLocation) {
+    const page = activePage.value
+    if (!page)
+      return
+
+    const duplicate: WidgetItem = {
+      ...widgetLocation.widget,
+      id: buildCopyId(widgetLocation.widget.id),
+      title: `${widgetLocation.widget.title} 副本`,
+    }
+
+    const nextPages = [...pages.value]
+    const nextPage: DesktopPage = {
+      ...page,
+      items: [...page.items],
+    }
+    nextPage.items.splice(widgetLocation.itemIndex + 1, 0, duplicate)
+    nextPages[widgetLocation.pageIndex] = nextPage
+    pages.value = nextPages
+    closeContextMenu()
+    return
+  }
+
   const location = findAppLocation(contextMenu.value.targetId)
   if (!location)
     return
@@ -618,6 +685,24 @@ function cloneContextTarget() {
 }
 
 function deleteContextTarget() {
+  const widgetLocation = findWidgetLocation(contextMenu.value.targetId)
+  if (widgetLocation) {
+    const page = activePage.value
+    if (!page)
+      return
+
+    const nextPages = [...pages.value]
+    const nextPage: DesktopPage = {
+      ...page,
+      items: [...page.items],
+    }
+    nextPage.items.splice(widgetLocation.itemIndex, 1)
+    nextPages[widgetLocation.pageIndex] = nextPage
+    pages.value = nextPages
+    closeContextMenu()
+    return
+  }
+
   const location = findAppLocation(contextMenu.value.targetId)
   if (!location)
     return
@@ -690,11 +775,24 @@ function importContextTargetToBookmarks() {
 }
 
 function markContextAction(label: string) {
-  const target = contextTargetApp.value
+  const target = contextTargetApp.value ?? contextTargetWidget.value
   const suffix = target ? `: ${target.title}` : ''
   console.info(`[Life Kline Hub] ${label}${suffix}`)
   closeContextMenu()
   closeDesktopMenu()
+}
+
+function openContextTarget() {
+  const widget = contextTargetWidget.value
+  if (widget) {
+    console.info(`[Life Kline Hub] open widget: ${widget.title}`)
+    closeContextMenu()
+    return
+  }
+
+  const app = contextTargetApp.value
+  if (app)
+    openItemInNewTab(app)
 }
 
 function updateAppByLocation(location: AppLocation, updater: (app: AppItem) => AppItem) {
@@ -831,13 +929,41 @@ function saveIconModal() {
   closeIconModal()
 }
 
+function buildNormalizedUrl(raw: string) {
+  const input = raw.trim()
+  if (!input)
+    return ''
+
+  return /^https?:\/\//i.test(input) ? input : `https://${input}`
+}
+
 function fetchIconForModal() {
   const raw = iconModal.value.form.url.trim()
   if (!raw)
     return
 
-  const target = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+  const target = buildNormalizedUrl(raw)
   iconModal.value.form.icon = `https://www.google.com/s2/favicons?sz=128&domain_url=${encodeURIComponent(target)}`
+}
+
+function autoFetchIcon() {
+  if (iconModal.value.form.icon.trim())
+    return
+
+  const target = buildNormalizedUrl(iconModal.value.form.url)
+  if (!target)
+    return
+
+  try {
+    const parsed = new URL(target)
+    if (!parsed.hostname)
+      return
+  }
+  catch {
+    return
+  }
+
+  fetchIconForModal()
 }
 
 function useSolidIconForModal() {
@@ -878,7 +1004,7 @@ async function positionMenu(panelRef: { value: HTMLElement | null }, position: {
   })
 }
 
-async function openContextMenu(event: MouseEvent, targetId: string) {
+async function openContextMenu(event: MouseEvent, targetId: string, targetType: ItemType) {
   closeDesktopMenu()
   contextMenu.value = {
     show: true,
@@ -886,11 +1012,40 @@ async function openContextMenu(event: MouseEvent, targetId: string) {
     y: event.clientY,
     targetId,
   }
+  contextMenuTargetType.value = targetType
+  hoverSizeMenu.value = false
 
   await positionMenu(contextMenuRef, { x: event.clientX, y: event.clientY }, ({ x, y }) => {
     contextMenu.value.x = x
     contextMenu.value.y = y
   })
+}
+
+function updateContextWidgetSize(size: WidgetSize) {
+  const location = findWidgetLocation(contextMenu.value.targetId)
+  if (!location)
+    return
+
+  const page = activePage.value
+  if (!page)
+    return
+
+  const nextPages = [...pages.value]
+  const nextPage: DesktopPage = {
+    ...page,
+    items: [...page.items],
+  }
+  const widget = nextPage.items[location.itemIndex]
+  if (!widget || widget.type !== 'widget')
+    return
+
+  nextPage.items[location.itemIndex] = {
+    ...widget,
+    size,
+  }
+  nextPages[location.pageIndex] = nextPage
+  pages.value = nextPages
+  closeContextMenu()
 }
 
 async function openDesktopMenu(event: MouseEvent) {
@@ -1170,9 +1325,10 @@ onBeforeUnmount(() => {
                 v-if="item.type === 'app'"
                 type="button"
                 data-grid-item
+                data-item-type="app"
                 class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
                 @click="openItem(item)"
-                @contextmenu.stop.prevent="openContextMenu($event, item.id)"
+                @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
                   <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10" />
@@ -1191,6 +1347,7 @@ onBeforeUnmount(() => {
                 v-else-if="item.type === 'folder'"
                 type="button"
                 data-grid-item
+                data-item-type="folder"
                 class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent
@@ -1219,9 +1376,10 @@ onBeforeUnmount(() => {
               <article
                 v-else
                 data-grid-item
+                data-item-type="widget"
                 class="group relative isolate cursor-pointer transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
                 :class="widgetSpanClass(item.size)"
-                @contextmenu.stop.prevent
+                @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <div class="absolute inset-0 -z-10 overflow-hidden rounded-[24px] bg-white/[0.16] backdrop-blur-xl border border-white/[0.14] shadow-[0_26px_80px_rgba(15,23,42,0.18)]">
                   <div class="absolute inset-0" :class="item.accentClass" />
@@ -1229,7 +1387,7 @@ onBeforeUnmount(() => {
                   <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
                 </div>
 
-                <div class="relative flex h-full flex-col p-4">
+                <div class="relative flex h-full flex-col overflow-hidden p-4">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="text-[11px] uppercase tracking-[0.28em] text-white/60">
@@ -1249,7 +1407,7 @@ onBeforeUnmount(() => {
                     {{ item.value }}
                   </div>
 
-                  <div class="mt-4 space-y-2 text-sm text-white/88">
+                  <div class="mt-4 flex-1 space-y-2 overflow-y-auto text-sm text-white/88 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <p
                       v-for="line in item.lines"
                       :key="line"
@@ -1340,7 +1498,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="group flex flex-col items-center gap-2"
                 @click="openApp(child)"
-                @contextmenu.stop.prevent="openContextMenu($event, child.id)"
+                @contextmenu.stop.prevent="openContextMenu($event, child.id, child.type)"
               >
                 <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
                   <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10" />
@@ -1400,14 +1558,47 @@ onBeforeUnmount(() => {
         @contextmenu.stop.prevent
       >
         <ul>
-          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openEditIconModal">
-            编辑
+          <li
+            class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10"
+            @click="contextMenuTargetType === 'widget' ? openContextTarget() : openEditIconModal()"
+          >
+            {{ contextMenuTargetType === 'widget' ? '打开小组件' : '编辑' }}
           </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="contextTargetApp && openItemInNewTab(contextTargetApp)">
             在新标签页打开
           </li>
-          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('尺寸')">
-            尺寸
+          <li
+            class="relative cursor-pointer px-4 py-2 transition-colors hover:bg-white/10"
+            @mouseenter="hoverSizeMenu = true"
+            @mouseleave="hoverSizeMenu = false"
+          >
+            <div class="flex items-center justify-between">
+              <span>尺寸</span>
+              <span class="text-white/45">&gt;</span>
+            </div>
+
+            <div
+              v-if="hoverSizeMenu && contextMenuTargetType === 'widget'"
+              class="absolute left-full top-0 ml-1 w-28 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
+            >
+              <ul>
+                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x1')">
+                  XS 1x1
+                </li>
+                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x2')">
+                  S 1x2
+                </li>
+                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x1')">
+                  M 2x1
+                </li>
+                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x2')">
+                  L 2x2
+                </li>
+                <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x4')">
+                  XL 2x4
+                </li>
+              </ul>
+            </div>
           </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="cloneContextTarget">
             克隆
@@ -1526,6 +1717,7 @@ onBeforeUnmount(() => {
                   type="text"
                   placeholder="https://example.com"
                   class="w-full rounded-lg bg-[#151924] px-3 py-2 outline-none ring-blue-500 focus:ring-1"
+                  @blur="autoFetchIcon"
                 >
               </label>
 
