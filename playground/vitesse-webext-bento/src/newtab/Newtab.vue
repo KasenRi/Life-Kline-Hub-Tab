@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import Sortable, { type SortableEvent } from 'sortablejs'
-import { onClickOutside, useStorage } from '@vueuse/core'
+import { onClickOutside, useEventListener, useStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SettingsModal from '~/components/SettingsModal.vue'
 import { useAppSettings } from '~/composables/useAppSettings'
 
 type ItemType = 'app' | 'folder' | 'widget'
-type WidgetSize = '1x1' | '1x2' | '2x1' | '2x2' | '2x4'
+type GridSize = '1x1' | '1x2' | '2x1' | '2x2' | '2x4' | '4x2' | '4x4'
+type WidgetSize = GridSize
 
 interface BaseItem {
   id: string
   type: ItemType
   title: string
+  size?: GridSize
 }
 
 interface AppItem extends BaseItem {
@@ -66,6 +68,12 @@ interface WidgetLocation {
   widget: WidgetItem
 }
 
+interface TopLevelItemLocation {
+  pageIndex: number
+  itemIndex: number
+  item: DesktopItem
+}
+
 type IconModalTab = 'store' | 'custom' | 'widget'
 type IconModalMode = 'add' | 'edit'
 
@@ -76,6 +84,9 @@ interface IconModalForm {
   icon: string
   shortcut: string
 }
+
+const gridSizeOptions: GridSize[] = ['1x1', '1x2', '2x1', '2x2', '2x4', '4x2', '4x4']
+const WHEEL_PAGE_TURN_LOCK_MS = 500
 
 const scenicWallpaper = svgToDataUrl(`
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" fill="none">
@@ -166,6 +177,7 @@ function createApp(id: string, title: string, url: string, label: string, from: 
     id,
     type: 'app',
     title,
+    size: '1x1',
     url,
     icon: makeIcon(label, from, to),
     desc: '',
@@ -383,10 +395,17 @@ const iconModalPanelRef = ref<HTMLElement | null>(null)
 const iconUploadInputRef = ref<HTMLInputElement | null>(null)
 const iconModalTargetId = ref<string | null>(null)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+const wheelPageTurnLockedUntil = ref(0)
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
 
+const totalPages = computed(() => pages.value.length)
+const activePageIndex = computed(() => {
+  const index = pages.value.findIndex(page => page.id === activePageId.value)
+  return index >= 0 ? index : 0
+})
+const currentPage = computed(() => totalPages.value ? activePageIndex.value + 1 : 0)
 const activePage = computed(() => pages.value.find(page => page.id === activePageId.value) ?? pages.value[0] ?? null)
 const keyword = computed(() => omnibar.value.trim().toLowerCase())
 const totalItems = computed(() => pages.value.reduce((sum, page) => sum + page.items.length, 0))
@@ -400,18 +419,20 @@ const visibleItems = computed<DesktopItem[]>(() => {
     return page.items
 
   return page.items.filter((item) => {
-    if (isAppItem(item))
+    if (isAppItem(item)) {
       return item.title.toLowerCase().includes(keyword.value)
         || item.url.toLowerCase().includes(keyword.value)
         || (item.desc ?? '').toLowerCase().includes(keyword.value)
         || (item.shortcut ?? '').toLowerCase().includes(keyword.value)
+    }
 
-    if (isFolderItem(item))
+    if (isFolderItem(item)) {
       return item.title.toLowerCase().includes(keyword.value) || item.children.some(child =>
         child.title.toLowerCase().includes(keyword.value)
         || child.url.toLowerCase().includes(keyword.value)
         || (child.desc ?? '').toLowerCase().includes(keyword.value)
         || (child.shortcut ?? '').toLowerCase().includes(keyword.value))
+    }
 
     return item.title.toLowerCase().includes(keyword.value)
       || item.eyebrow.toLowerCase().includes(keyword.value)
@@ -430,6 +451,10 @@ const activeFolder = computed<FolderItem | null>(() => {
   return folder && isFolderItem(folder) ? folder : null
 })
 const contextTargetApp = computed(() => findAppLocation(contextMenu.value.targetId)?.app ?? null)
+const contextTargetFolder = computed(() => {
+  const location = findTopLevelItemLocation(contextMenu.value.targetId)
+  return location?.item && isFolderItem(location.item) ? location.item : null
+})
 const contextTargetWidget = computed(() => findWidgetLocation(contextMenu.value.targetId)?.widget ?? null)
 const iconPreviewSrc = computed(() => {
   const providedIcon = iconModal.value.form.icon.trim()
@@ -439,18 +464,6 @@ const iconPreviewSrc = computed(() => {
   return makeSolidIcon(iconModal.value.form.title || 'App')
 })
 const shortcutBadgeLabel = computed(() => (/Mac|iPhone|iPad|iPod/.test(globalThis.navigator?.platform ?? '') ? '⌘K' : 'Ctrl K'))
-const quoteCardStyle = computed(() => ({
-  opacity: appSettings.value.screenSaverOpacity / 100,
-  borderColor: withAlpha(appSettings.value.themeColor, 0.16),
-  boxShadow: `0 18px 60px ${withAlpha('#020617', 0.28)}`,
-}))
-const quoteText = computed(() => {
-  return `Local First means the desktop is ready before the network is.`
-})
-const quoteMeta = computed(() => `Life Kline Hub · ${activePage.value?.title ?? 'Workspace'}`)
-const themeTextStyle = computed(() => ({
-  color: withAlpha(appSettings.value.themeColor, 0.92),
-}))
 const themeGlowStyle = computed(() => ({
   background: `radial-gradient(circle at center, ${withAlpha(appSettings.value.themeColor, 0.3)} 0%, transparent 72%)`,
 }))
@@ -488,9 +501,6 @@ const gridStyle = computed(() => {
 })
 const iconPixelSize = computed(() => `${appSettings.value.iconSize}px`)
 const iconRadiusPx = computed(() => `${Math.round((appSettings.value.iconSize / 2) * (appSettings.value.iconRadius / 100))}px`)
-const iconButtonStyle = computed(() => ({
-  maxWidth: `${appSettings.value.iconSize + 36}px`,
-}))
 const iconSurfaceStyle = computed(() => ({
   width: iconPixelSize.value,
   height: iconPixelSize.value,
@@ -568,7 +578,19 @@ function withAlpha(hex: string, alpha: number) {
   return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`
 }
 
-function widgetSpanClass(size: WidgetSize) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getItemSize(item: DesktopItem) {
+  return item.size ?? '1x1'
+}
+
+function isExpandedGridSize(size: GridSize | undefined) {
+  return (size ?? '1x1') !== '1x1'
+}
+
+function gridSpanClass(size: GridSize | undefined) {
   if (size === '1x2')
     return 'row-span-2'
   if (size === '2x1')
@@ -576,7 +598,11 @@ function widgetSpanClass(size: WidgetSize) {
   if (size === '2x2')
     return 'col-span-2 row-span-2'
   if (size === '2x4')
+    return 'col-span-2 row-span-4'
+  if (size === '4x2')
     return 'col-span-4 row-span-2'
+  if (size === '4x4')
+    return 'col-span-4 row-span-4'
   return ''
 }
 
@@ -599,7 +625,26 @@ function updateViewportMetrics() {
 }
 
 function setActivePage(pageId: string) {
-  activePageId.value = pageId
+  if (pages.value.some(page => page.id === pageId))
+    activePageId.value = pageId
+}
+
+function setActivePageByIndex(index: number) {
+  const page = pages.value[index]
+  if (page)
+    setActivePage(page.id)
+}
+
+function turnPage(offset: number) {
+  if (!totalPages.value)
+    return false
+
+  const nextIndex = clamp(activePageIndex.value + offset, 0, totalPages.value - 1)
+  if (nextIndex === activePageIndex.value)
+    return false
+
+  setActivePageByIndex(nextIndex)
+  return true
 }
 
 function closeFolder() {
@@ -614,6 +659,22 @@ function closeContextMenu() {
 
 function closeDesktopMenu() {
   desktopMenu.value.show = false
+}
+
+function shouldIgnoreGlobalPagination(target: EventTarget | null) {
+  const element = target as HTMLElement | null
+  if (element?.closest('input, textarea, select, [contenteditable="true"], [data-floating-panel], [data-prevent-global-pagination]'))
+    return true
+
+  return Boolean(activeFolderId.value || desktopMenu.value.show || contextMenu.value.show || iconModal.value.show || isSettingsOpen.value)
+}
+
+function isWheelPageTurnLocked() {
+  return Date.now() < wheelPageTurnLockedUntil.value
+}
+
+function lockWheelPageTurn() {
+  wheelPageTurnLockedUntil.value = Date.now() + WHEEL_PAGE_TURN_LOCK_MS
 }
 
 function createEmptyIconForm(): IconModalForm {
@@ -739,6 +800,26 @@ function findAppLocation(targetId: string | null): AppLocation | null {
   return null
 }
 
+function findTopLevelItemLocation(targetId: string | null): TopLevelItemLocation | null {
+  const page = activePage.value
+  if (!page || !targetId)
+    return null
+
+  const pageIndex = pages.value.findIndex(item => item.id === page.id)
+  if (pageIndex < 0)
+    return null
+
+  const itemIndex = page.items.findIndex(item => item.id === targetId)
+  if (itemIndex < 0)
+    return null
+
+  return {
+    pageIndex,
+    itemIndex,
+    item: page.items[itemIndex],
+  }
+}
+
 function findWidgetLocation(targetId: string | null): WidgetLocation | null {
   const page = activePage.value
   if (!page || !targetId)
@@ -783,6 +864,34 @@ function cloneContextTarget() {
     }
     nextPage.items.splice(widgetLocation.itemIndex + 1, 0, duplicate)
     nextPages[widgetLocation.pageIndex] = nextPage
+    pages.value = nextPages
+    closeContextMenu()
+    return
+  }
+
+  const topLevelLocation = findTopLevelItemLocation(contextMenu.value.targetId)
+  if (topLevelLocation?.item && isFolderItem(topLevelLocation.item)) {
+    const page = activePage.value
+    if (!page)
+      return
+
+    const duplicate: FolderItem = {
+      ...topLevelLocation.item,
+      id: buildCopyId(topLevelLocation.item.id),
+      title: `${topLevelLocation.item.title} 副本`,
+      children: topLevelLocation.item.children.map(child => ({
+        ...child,
+        id: buildCopyId(child.id),
+      })),
+    }
+
+    const nextPages = [...pages.value]
+    const nextPage: DesktopPage = {
+      ...page,
+      items: [...page.items],
+    }
+    nextPage.items.splice(topLevelLocation.itemIndex + 1, 0, duplicate)
+    nextPages[topLevelLocation.pageIndex] = nextPage
     pages.value = nextPages
     closeContextMenu()
     return
@@ -848,6 +957,28 @@ function deleteContextTarget() {
     return
   }
 
+  const topLevelLocation = findTopLevelItemLocation(contextMenu.value.targetId)
+  if (topLevelLocation?.item && isFolderItem(topLevelLocation.item)) {
+    const page = activePage.value
+    if (!page)
+      return
+
+    const nextPages = [...pages.value]
+    const nextPage: DesktopPage = {
+      ...page,
+      items: [...page.items],
+    }
+    nextPage.items.splice(topLevelLocation.itemIndex, 1)
+    nextPages[topLevelLocation.pageIndex] = nextPage
+    pages.value = nextPages
+
+    if (activeFolderId.value === topLevelLocation.item.id)
+      closeFolder()
+
+    closeContextMenu()
+    return
+  }
+
   const location = findAppLocation(contextMenu.value.targetId)
   if (!location)
     return
@@ -887,30 +1018,33 @@ function deleteContextTarget() {
 }
 
 function importContextTargetToBookmarks() {
-  const app = contextTargetApp.value
-  if (!app)
+  const apps = contextTargetFolder.value?.children ?? (contextTargetApp.value ? [contextTargetApp.value] : [])
+  if (!apps.length)
     return
 
-  if (!savedBookmarks.value.some(bookmark => bookmark.url === app.url)) {
-    savedBookmarks.value = [
-      ...savedBookmarks.value,
-      {
+  const existingUrls = new Set(savedBookmarks.value.map(bookmark => bookmark.url))
+  const nextBookmarks = [...savedBookmarks.value]
+  for (const app of apps) {
+    if (!existingUrls.has(app.url)) {
+      existingUrls.add(app.url)
+      nextBookmarks.push({
         id: `bookmark-${app.id}`,
         title: app.title,
         url: app.url,
         icon: app.icon,
-      },
-    ]
+      })
+    }
   }
+  savedBookmarks.value = nextBookmarks
 
   const browserApi = globalThis.browser as { runtime?: { id?: string }, bookmarks?: { create: (input: { title: string, url: string }) => Promise<unknown> } } | undefined
   const chromeApi = globalThis.chrome as { runtime?: { id?: string }, bookmarks?: { create: (input: { title: string, url: string }, callback?: () => void) => void } } | undefined
 
   try {
     if (browserApi?.runtime?.id && browserApi.bookmarks?.create)
-      void browserApi.bookmarks.create({ title: app.title, url: app.url })
+      apps.forEach(app => void browserApi.bookmarks.create({ title: app.title, url: app.url }))
     else if (chromeApi?.runtime?.id && chromeApi.bookmarks?.create)
-      chromeApi.bookmarks.create({ title: app.title, url: app.url })
+      apps.forEach(app => chromeApi.bookmarks.create({ title: app.title, url: app.url }))
   }
   catch (error) {
     console.warn('Failed to import bookmark via extension API.', error)
@@ -920,9 +1054,7 @@ function importContextTargetToBookmarks() {
 }
 
 function markContextAction(label: string) {
-  const target = contextTargetApp.value ?? contextTargetWidget.value
-  const suffix = target ? `: ${target.title}` : ''
-  console.info(`[Life Kline Hub] ${label}${suffix}`)
+  void label
   closeContextMenu()
   closeDesktopMenu()
 }
@@ -930,7 +1062,6 @@ function markContextAction(label: string) {
 function openContextTarget() {
   const widget = contextTargetWidget.value
   if (widget) {
-    console.info(`[Life Kline Hub] open widget: ${widget.title}`)
     closeContextMenu()
     return
   }
@@ -1165,30 +1296,113 @@ async function openContextMenu(event: MouseEvent, targetId: string, targetType: 
   })
 }
 
-function updateContextWidgetSize(size: WidgetSize) {
+function updateContextTargetSize(size: GridSize) {
   const location = findWidgetLocation(contextMenu.value.targetId)
-  if (!location)
+  if (location) {
+    const page = activePage.value
+    if (!page)
+      return
+
+    const nextPages = [...pages.value]
+    const nextPage: DesktopPage = {
+      ...page,
+      items: [...page.items],
+    }
+    const widget = nextPage.items[location.itemIndex]
+    if (!widget || widget.type !== 'widget')
+      return
+
+    nextPage.items[location.itemIndex] = {
+      ...widget,
+      size,
+    }
+    nextPages[location.pageIndex] = nextPage
+    pages.value = nextPages
+    closeContextMenu()
     return
+  }
+
+  const folderLocation = findTopLevelItemLocation(contextMenu.value.targetId)
+  if (folderLocation?.item && isFolderItem(folderLocation.item)) {
+    const page = activePage.value
+    if (!page)
+      return
+
+    const nextPages = [...pages.value]
+    const nextPage: DesktopPage = {
+      ...page,
+      items: [...page.items],
+    }
+
+    nextPage.items[folderLocation.itemIndex] = {
+      ...folderLocation.item,
+      size,
+    }
+    nextPages[folderLocation.pageIndex] = nextPage
+    pages.value = nextPages
+    closeContextMenu()
+    return
+  }
+
+  const appLocation = findAppLocation(contextMenu.value.targetId)
+  if (!appLocation)
+    return
+
+  updateAppByLocation(appLocation, app => ({
+    ...app,
+    size,
+  }))
+  closeContextMenu()
+}
+
+function openContextFolder() {
+  const folder = contextTargetFolder.value
+  if (!folder)
+    return
+
+  closeContextMenu()
+  closeDesktopMenu()
+  activeFolderId.value = folder.id
+}
+
+function openAllFromContextFolder() {
+  const folder = contextTargetFolder.value
+  if (!folder)
+    return
+
+  closeContextMenu()
+  closeDesktopMenu()
+  closeFolder()
+  folder.children.forEach(child => window.open(child.url, '_blank', 'noopener,noreferrer'))
+}
+
+function releaseContextFolder() {
+  const location = findTopLevelItemLocation(contextMenu.value.targetId)
+  if (!location?.item || !isFolderItem(location.item)) {
+    return
+  }
 
   const page = activePage.value
   if (!page)
     return
+
+  const releasedChildren = location.item.children.map(child => ({
+    ...child,
+    id: buildCopyId(child.id),
+  }))
 
   const nextPages = [...pages.value]
   const nextPage: DesktopPage = {
     ...page,
     items: [...page.items],
   }
-  const widget = nextPage.items[location.itemIndex]
-  if (!widget || widget.type !== 'widget')
-    return
-
-  nextPage.items[location.itemIndex] = {
-    ...widget,
-    size,
-  }
+  nextPage.items.splice(location.itemIndex, 1, ...releasedChildren)
   nextPages[location.pageIndex] = nextPage
   pages.value = nextPages
+
+  if (activeFolderId.value === location.item.id)
+    closeFolder()
+
   closeContextMenu()
 }
 
@@ -1267,7 +1481,7 @@ function resolveOmnibarTarget(input: string) {
   if (/^https?:\/\//i.test(input))
     return input
 
-  if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(input))
+  if (/^[\w.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(input))
     return `https://${input}`
 
   return `https://www.google.com/search?q=${encodeURIComponent(input)}`
@@ -1349,6 +1563,32 @@ function handleWindowKeydown(event: KeyboardEvent) {
     closeFolder()
     isSettingsOpen.value = false
   }
+
+  if (shouldIgnoreGlobalPagination(event.target))
+    return
+
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    turnPage(-1)
+    return
+  }
+
+  if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    turnPage(1)
+  }
+}
+
+function handleWindowWheel(event: WheelEvent) {
+  if (shouldIgnoreGlobalPagination(event.target) || isWheelPageTurnLocked())
+    return
+
+  if (Math.abs(event.deltaX) <= Math.abs(event.deltaY) || Math.abs(event.deltaX) <= 20)
+    return
+
+  const changedPage = event.deltaX > 0 ? turnPage(1) : turnPage(-1)
+  if (changedPage)
+    lockWheelPageTurn()
 }
 
 onClickOutside(contextMenuRef, () => {
@@ -1390,9 +1630,13 @@ watch(() => appSettings.value.clockUse24Hour, () => {
   updateClock()
 })
 
+if (typeof window !== 'undefined') {
+  useEventListener(window, 'keydown', handleWindowKeydown)
+  useEventListener(window, 'resize', updateViewportMetrics)
+  useEventListener(window, 'wheel', handleWindowWheel, { passive: true })
+}
+
 onMounted(async () => {
-  window.addEventListener('keydown', handleWindowKeydown)
-  window.addEventListener('resize', updateViewportMetrics)
   updateViewportMetrics()
   updateClock()
   clockTimer = window.setInterval(updateClock, 60_000)
@@ -1401,8 +1645,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleWindowKeydown)
-  window.removeEventListener('resize', updateViewportMetrics)
   if (clockTimer != null)
     window.clearInterval(clockTimer)
   sortable?.destroy()
@@ -1529,36 +1771,56 @@ onBeforeUnmount(() => {
                 type="button"
                 data-grid-item
                 data-item-type="app"
-                class="group flex w-full flex-col items-center justify-self-center self-start"
-                :style="iconButtonStyle"
+                class="group relative flex w-full justify-self-stretch"
+                :class="[gridSpanClass(getItemSize(item)), isExpandedGridSize(getItemSize(item)) ? 'h-full items-center justify-center self-stretch' : 'flex-col items-center self-start']"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div
-                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                  :style="iconSurfaceStyle"
-                >
-                  <div class="absolute inset-0 -z-10 overflow-hidden bg-white/10 backdrop-blur-xl border" :style="iconBackdropStyle" />
-                  <img
-                    :src="item.icon"
-                    :alt="item.title"
-                    class="relative h-full w-full object-cover shadow-sm"
-                    :style="iconImageStyle"
+                <div :class="isExpandedGridSize(getItemSize(item)) ? 'flex h-full w-full items-center justify-center' : ''">
+                  <div
+                    class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                    :style="iconSurfaceStyle"
                   >
+                    <div class="absolute inset-0 -z-10 overflow-hidden bg-white/10 border backdrop-blur-xl" :style="iconBackdropStyle" />
+                    <img
+                      :src="item.icon"
+                      :alt="item.title"
+                      class="relative h-full w-full object-cover shadow-sm"
+                      :style="iconImageStyle"
+                    >
+                  </div>
                 </div>
-                <span
-                  v-if="appSettings.showIconLabels"
-                  class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
-                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                >
-                  {{ item.title }}
-                </span>
-                <span
-                  v-if="appSettings.enableShortcutHints && item.shortcut"
-                  class="mt-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
-                >
-                  {{ item.shortcut }}
-                </span>
+                <template v-if="!isExpandedGridSize(getItemSize(item))">
+                  <span
+                    v-if="appSettings.showIconLabels"
+                    class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                  >
+                    {{ item.title }}
+                  </span>
+                  <span
+                    v-if="appSettings.enableShortcutHints && item.shortcut"
+                    class="mt-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                  >
+                    {{ item.shortcut }}
+                  </span>
+                </template>
+
+                <div v-else class="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-3 pb-1.5">
+                  <span
+                    v-if="appSettings.showIconLabels"
+                    class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                  >
+                    {{ item.title }}
+                  </span>
+                  <span
+                    v-if="appSettings.enableShortcutHints && item.shortcut"
+                    class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                  >
+                    {{ item.shortcut }}
+                  </span>
+                </div>
               </button>
 
               <button
@@ -1566,38 +1828,48 @@ onBeforeUnmount(() => {
                 type="button"
                 data-grid-item
                 data-item-type="folder"
-                class="group flex w-full flex-col items-center justify-self-center self-start"
-                :style="iconButtonStyle"
+                class="group relative flex w-full justify-self-stretch"
+                :class="[gridSpanClass(getItemSize(item)), isExpandedGridSize(getItemSize(item)) ? 'h-full items-center justify-center self-stretch' : 'flex-col items-center self-start']"
                 @click="openItem(item)"
-                @contextmenu.stop.prevent
+                @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div
-                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                  :style="iconSurfaceStyle"
-                >
-                  <div class="absolute inset-0 -z-10 overflow-hidden bg-white/[0.18] backdrop-blur-xl border" :style="iconBackdropStyle" />
-                  <div class="relative grid h-full w-full grid-cols-3 gap-1 p-2">
-                    <div
-                      v-for="child in item.children.slice(0, 6)"
-                      :key="child.id"
-                      class="overflow-hidden bg-white/[0.12]"
-                      :style="folderThumbRadiusStyle"
-                    >
-                      <img
-                        :src="child.icon"
-                        :alt="child.title"
-                        class="h-full w-full object-cover"
+                <div :class="isExpandedGridSize(getItemSize(item)) ? 'flex h-full w-full items-center justify-center' : ''">
+                  <div
+                    class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                    :style="iconSurfaceStyle"
+                  >
+                    <div class="absolute inset-0 -z-10 overflow-hidden bg-white/[0.18] border backdrop-blur-xl" :style="iconBackdropStyle" />
+                    <div class="relative grid h-full w-full grid-cols-3 gap-1 p-2">
+                      <div
+                        v-for="child in item.children.slice(0, 6)"
+                        :key="child.id"
+                        class="overflow-hidden bg-white/[0.12]"
+                        :style="folderThumbRadiusStyle"
                       >
+                        <img
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                        >
+                      </div>
                     </div>
                   </div>
                 </div>
                 <span
-                  v-if="appSettings.showIconLabels"
+                  v-if="appSettings.showIconLabels && !isExpandedGridSize(getItemSize(item))"
                   class="mt-1.5 w-full truncate text-center text-xs text-white/90 drop-shadow-md"
                   :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                 >
                   {{ item.title }}
                 </span>
+                <div v-else-if="appSettings.showIconLabels" class="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-1.5">
+                  <span
+                    class="block w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                  >
+                    {{ item.title }}
+                  </span>
+                </div>
               </button>
 
               <article
@@ -1605,7 +1877,7 @@ onBeforeUnmount(() => {
                 data-grid-item
                 data-item-type="widget"
                 class="group relative isolate h-full w-full cursor-pointer self-stretch justify-self-stretch transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                :class="widgetSpanClass(item.size)"
+                :class="gridSpanClass(item.size)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <div class="absolute inset-0 -z-10 h-full w-full overflow-hidden rounded-[24px] border border-white/[0.14] bg-white/[0.16] shadow-[0_26px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
@@ -1660,7 +1932,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <footer class="mt-8 flex items-center justify-center gap-3 pb-2 sm:mt-10">
+        <footer class="mt-8 flex items-center justify-center gap-3 pb-2 sm:mt-10" :aria-label="`当前第 ${currentPage} 页，共 ${totalPages} 页`">
           <button
             v-for="page in pages"
             :key="page.id"
@@ -1790,11 +2062,52 @@ onBeforeUnmount(() => {
         v-if="contextMenu.show"
         ref="contextMenuRef"
         data-floating-panel
-        class="fixed z-50 w-48 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
+        class="fixed z-50 w-52 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
         :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
         @contextmenu.stop.prevent
       >
-        <ul>
+        <ul v-if="contextMenuTargetType === 'folder'">
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openContextFolder">
+            打开文件夹
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openAllFromContextFolder">
+            打开所有
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="releaseContextFolder">
+            释放文件夹
+          </li>
+          <li class="group relative cursor-pointer px-4 py-2 transition-colors hover:bg-white/10">
+            <div class="flex items-center justify-between">
+              <span>尺寸</span>
+              <span class="text-white/45">&gt;</span>
+            </div>
+
+            <div class="absolute left-full top-0 hidden pl-2 group-hover:block">
+              <div class="w-24 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl">
+                <ul>
+                  <li v-for="size in gridSizeOptions" :key="size" class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextTargetSize(size)">
+                    {{ size }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="cloneContextTarget">
+            克隆
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="importContextTargetToBookmarks">
+            导入到书签
+          </li>
+          <div class="my-1 h-px bg-white/10" />
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('批量编辑')">
+            批量编辑
+          </li>
+          <li class="cursor-pointer px-4 py-2 text-rose-200 transition-colors hover:bg-white/10" @click="deleteContextTarget">
+            删除
+          </li>
+        </ul>
+
+        <ul v-else>
           <li
             class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10"
             @click="contextMenuTargetType === 'widget' ? openContextTarget() : openEditIconModal()"
@@ -1804,34 +2117,20 @@ onBeforeUnmount(() => {
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="contextTargetApp && openItemInNewTab(contextTargetApp)">
             在新标签页打开
           </li>
-          <li
-            class="group relative cursor-pointer px-4 py-2 transition-colors hover:bg-white/10"
-          >
+          <li class="group relative cursor-pointer px-4 py-2 transition-colors hover:bg-white/10">
             <div class="flex items-center justify-between">
               <span>尺寸</span>
               <span class="text-white/45">&gt;</span>
             </div>
 
             <div
-              v-if="contextMenuTargetType === 'widget'"
+              v-if="contextMenuTargetType"
               class="absolute left-full top-0 hidden pl-2 group-hover:block"
             >
-              <div class="w-28 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl">
+              <div class="w-24 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl">
                 <ul>
-                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x1')">
-                    XS 1x1
-                  </li>
-                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('1x2')">
-                    S 1x2
-                  </li>
-                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x1')">
-                    M 2x1
-                  </li>
-                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x2')">
-                    L 2x2
-                  </li>
-                  <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextWidgetSize('2x4')">
-                    XL 2x4
+                  <li v-for="size in gridSizeOptions" :key="size" class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="updateContextTargetSize(size)">
+                    {{ size }}
                   </li>
                 </ul>
               </div>
@@ -2072,29 +2371,6 @@ onBeforeUnmount(() => {
       class="hidden"
       @change="handleIconUpload"
     >
-
-    <transition
-      enter-active-class="transition duration-300 ease-out"
-      enter-from-class="opacity-0 translate-y-2"
-      enter-to-class="opacity-100 translate-y-0"
-      leave-active-class="transition duration-200 ease-in"
-      leave-from-class="opacity-100 translate-y-0"
-      leave-to-class="opacity-0 translate-y-2"
-    >
-      <div
-        v-if="appSettings.showScreenSaverQuote"
-        class="pointer-events-none fixed bottom-8 left-8 z-20 hidden max-w-sm rounded-[28px] border bg-black/15 px-5 py-4 backdrop-blur-xl md:block"
-        :style="quoteCardStyle"
-      >
-        <p class="text-sm leading-6 text-white/88">
-          {{ quoteText }}
-        </p>
-        <p class="mt-3 text-[11px] uppercase tracking-[0.26em]" :style="themeTextStyle">
-          {{ quoteMeta }}
-        </p>
-      </div>
-    </transition>
-
     <SettingsModal v-if="isSettingsOpen" @close="isSettingsOpen = false" />
   </div>
 </template>
