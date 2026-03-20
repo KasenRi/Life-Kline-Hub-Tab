@@ -16,6 +16,8 @@ interface AppItem extends BaseItem {
   type: 'app'
   icon: string
   url: string
+  desc?: string
+  shortcut?: string
 }
 
 interface FolderItem extends BaseItem {
@@ -54,6 +56,17 @@ interface AppLocation {
   itemIndex: number
   childIndex: number | null
   app: AppItem
+}
+
+type IconModalTab = 'store' | 'custom' | 'widget'
+type IconModalMode = 'add' | 'edit'
+
+interface IconModalForm {
+  title: string
+  url: string
+  desc: string
+  icon: string
+  shortcut: string
 }
 
 const scenicWallpaper = svgToDataUrl(`
@@ -147,6 +160,8 @@ function createApp(id: string, title: string, url: string, label: string, from: 
     title,
     url,
     icon: makeIcon(label, from, to),
+    desc: '',
+    shortcut: '',
   }
 }
 
@@ -328,9 +343,34 @@ const contextMenu = ref<{ show: boolean, x: number, y: number, targetId: string 
   y: 0,
   targetId: null,
 })
+const desktopMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+})
+const iconModal = ref<{
+  show: boolean
+  mode: IconModalMode
+  form: IconModalForm
+}>({
+  show: false,
+  mode: 'add',
+  form: {
+    title: '',
+    url: '',
+    desc: '',
+    icon: '',
+    shortcut: '',
+  },
+})
+const iconModalTab = ref<IconModalTab>('custom')
 const omnibarRef = ref<HTMLInputElement | null>(null)
 const gridRef = ref<HTMLElement | null>(null)
 const contextMenuRef = ref<HTMLElement | null>(null)
+const desktopMenuRef = ref<HTMLElement | null>(null)
+const iconModalPanelRef = ref<HTMLElement | null>(null)
+const iconUploadInputRef = ref<HTMLInputElement | null>(null)
+const iconModalTargetId = ref<string | null>(null)
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
@@ -350,9 +390,16 @@ const visibleItems = computed<DesktopItem[]>(() => {
   return page.items.filter((item) => {
     if (isAppItem(item))
       return item.title.toLowerCase().includes(keyword.value)
+        || item.url.toLowerCase().includes(keyword.value)
+        || (item.desc ?? '').toLowerCase().includes(keyword.value)
+        || (item.shortcut ?? '').toLowerCase().includes(keyword.value)
 
     if (isFolderItem(item))
-      return item.title.toLowerCase().includes(keyword.value) || item.children.some(child => child.title.toLowerCase().includes(keyword.value))
+      return item.title.toLowerCase().includes(keyword.value) || item.children.some(child =>
+        child.title.toLowerCase().includes(keyword.value)
+        || child.url.toLowerCase().includes(keyword.value)
+        || (child.desc ?? '').toLowerCase().includes(keyword.value)
+        || (child.shortcut ?? '').toLowerCase().includes(keyword.value))
 
     return item.title.toLowerCase().includes(keyword.value)
       || item.eyebrow.toLowerCase().includes(keyword.value)
@@ -371,6 +418,13 @@ const activeFolder = computed<FolderItem | null>(() => {
   return folder && isFolderItem(folder) ? folder : null
 })
 const contextTargetApp = computed(() => findAppLocation(contextMenu.value.targetId)?.app ?? null)
+const iconPreviewSrc = computed(() => {
+  const providedIcon = iconModal.value.form.icon.trim()
+  if (providedIcon)
+    return providedIcon
+
+  return makeSolidIcon(iconModal.value.form.title || 'App')
+})
 
 function widgetSpanClass(size: WidgetSize) {
   return size === '2x4' ? 'col-span-2 row-span-4' : 'col-span-2 row-span-2'
@@ -399,18 +453,42 @@ function closeContextMenu() {
   contextMenu.value.targetId = null
 }
 
+function closeDesktopMenu() {
+  desktopMenu.value.show = false
+}
+
+function createEmptyIconForm(): IconModalForm {
+  return {
+    title: '',
+    url: '',
+    desc: '',
+    icon: '',
+    shortcut: '',
+  }
+}
+
+function closeIconModal() {
+  iconModal.value.show = false
+  iconModal.value.mode = 'add'
+  iconModal.value.form = createEmptyIconForm()
+  iconModalTab.value = 'custom'
+  iconModalTargetId.value = null
+}
+
 function openUrl(url: string) {
   window.location.assign(url)
 }
 
 function openApp(app: AppItem) {
   closeContextMenu()
+  closeDesktopMenu()
   closeFolder()
   openUrl(app.url)
 }
 
 function openItem(item: DesktopItem) {
   closeContextMenu()
+  closeDesktopMenu()
 
   if (isAppItem(item)) {
     openApp(item)
@@ -428,6 +506,38 @@ function openItemInNewTab(app: AppItem) {
 
 function buildCopyId(sourceId: string) {
   return `${sourceId}-copy-${Date.now().toString(36)}`
+}
+
+function buildAppId() {
+  return `app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+}
+
+function getTitleLabel(title: string) {
+  const normalized = title.trim()
+  if (!normalized)
+    return 'A'
+
+  const compact = normalized.replace(/\s+/g, '')
+  return compact.slice(0, 2).toUpperCase()
+}
+
+function hashString(input: string) {
+  return [...input].reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0)
+}
+
+function makeSolidIcon(title: string) {
+  const palette = [
+    ['#2563EB', '#60A5FA'],
+    ['#0F766E', '#2DD4BF'],
+    ['#7C3AED', '#A78BFA'],
+    ['#BE185D', '#FB7185'],
+    ['#EA580C', '#FDBA74'],
+    ['#166534', '#4ADE80'],
+    ['#0F172A', '#475569'],
+  ] as const
+  const index = Math.abs(hashString(title || 'app')) % palette.length
+  const [from, to] = palette[index]
+  return makeIcon(getTitleLabel(title), from, to)
 }
 
 function findAppLocation(targetId: string | null): AppLocation | null {
@@ -580,13 +690,196 @@ function importContextTargetToBookmarks() {
 }
 
 function markContextAction(label: string) {
-  if (contextTargetApp.value)
-    console.info(`[Life Kline Hub] ${label}: ${contextTargetApp.value.title}`)
+  const target = contextTargetApp.value
+  const suffix = target ? `: ${target.title}` : ''
+  console.info(`[Life Kline Hub] ${label}${suffix}`)
   closeContextMenu()
+  closeDesktopMenu()
+}
+
+function updateAppByLocation(location: AppLocation, updater: (app: AppItem) => AppItem) {
+  const page = activePage.value
+  if (!page)
+    return
+
+  const nextPages = [...pages.value]
+  const nextPage: DesktopPage = {
+    ...page,
+    items: [...page.items],
+  }
+
+  if (location.childIndex == null) {
+    const current = nextPage.items[location.itemIndex]
+    if (!current || !isAppItem(current))
+      return
+
+    nextPage.items[location.itemIndex] = updater(current)
+  }
+  else {
+    const folder = nextPage.items[location.itemIndex]
+    if (!folder || !isFolderItem(folder))
+      return
+
+    const nextChildren = [...folder.children]
+    nextChildren[location.childIndex] = updater(nextChildren[location.childIndex])
+    nextPage.items[location.itemIndex] = {
+      ...folder,
+      children: nextChildren,
+    }
+  }
+
+  nextPages[location.pageIndex] = nextPage
+  pages.value = nextPages
+}
+
+function normalizeAppForm(form: IconModalForm): AppItem {
+  const title = form.title.trim() || '新图标'
+  const icon = form.icon.trim() || makeSolidIcon(title)
+  const url = form.url.trim() || 'https://example.com'
+
+  return {
+    id: buildAppId(),
+    type: 'app',
+    title,
+    url,
+    icon,
+    desc: form.desc.trim(),
+    shortcut: form.shortcut.trim(),
+  }
+}
+
+function openAddIconModal() {
+  closeContextMenu()
+  closeDesktopMenu()
+  iconModal.value = {
+    show: true,
+    mode: 'add',
+    form: createEmptyIconForm(),
+  }
+  iconModalTab.value = 'custom'
+  iconModalTargetId.value = null
+}
+
+function openWidgetTabModal() {
+  closeContextMenu()
+  closeDesktopMenu()
+  iconModal.value.show = true
+  iconModal.value.mode = 'add'
+  iconModal.value.form = createEmptyIconForm()
+  iconModalTab.value = 'widget'
+  iconModalTargetId.value = null
+}
+
+function openEditIconModal() {
+  const app = contextTargetApp.value
+  if (!app)
+    return
+
+  closeContextMenu()
+  closeDesktopMenu()
+  iconModal.value = {
+    show: true,
+    mode: 'edit',
+    form: {
+      title: app.title,
+      url: app.url,
+      desc: app.desc ?? '',
+      icon: app.icon,
+      shortcut: app.shortcut ?? '',
+    },
+  }
+  iconModalTab.value = 'custom'
+  iconModalTargetId.value = app.id
+}
+
+function saveIconModal() {
+  if (iconModalTab.value !== 'custom')
+    return
+
+  const preparedApp = normalizeAppForm(iconModal.value.form)
+  const page = activePage.value
+  if (!page)
+    return
+
+  if (iconModal.value.mode === 'edit') {
+    const location = findAppLocation(iconModalTargetId.value)
+    if (!location)
+      return
+
+    updateAppByLocation(location, app => ({
+      ...app,
+      title: preparedApp.title,
+      url: preparedApp.url,
+      icon: preparedApp.icon,
+      desc: preparedApp.desc,
+      shortcut: preparedApp.shortcut,
+    }))
+  }
+  else {
+    const pageIndex = pages.value.findIndex(item => item.id === page.id)
+    if (pageIndex < 0)
+      return
+
+    const nextPages = [...pages.value]
+    nextPages[pageIndex] = {
+      ...page,
+      items: [...page.items, preparedApp],
+    }
+    pages.value = nextPages
+  }
+
+  closeIconModal()
+}
+
+function fetchIconForModal() {
+  const raw = iconModal.value.form.url.trim()
+  if (!raw)
+    return
+
+  const target = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+  iconModal.value.form.icon = `https://www.google.com/s2/favicons?sz=128&domain_url=${encodeURIComponent(target)}`
+}
+
+function useSolidIconForModal() {
+  iconModal.value.form.icon = makeSolidIcon(iconModal.value.form.title || 'App')
+}
+
+function triggerIconUpload() {
+  iconUploadInputRef.value?.click()
+}
+
+function handleIconUpload(event: Event) {
+  const input = event.target as HTMLInputElement | null
+  const file = input?.files?.[0]
+  if (!file)
+    return
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    if (typeof reader.result === 'string')
+      iconModal.value.form.icon = reader.result
+  }
+  reader.readAsDataURL(file)
+
+  if (input)
+    input.value = ''
+}
+
+async function positionMenu(panelRef: { value: HTMLElement | null }, position: { x: number, y: number }, setPosition: (coords: { x: number, y: number }) => void) {
+  const margin = 12
+  await nextTick()
+  const panel = panelRef.value
+  if (!panel)
+    return
+
+  setPosition({
+    x: Math.max(margin, Math.min(position.x, window.innerWidth - panel.offsetWidth - margin)),
+    y: Math.max(margin, Math.min(position.y, window.innerHeight - panel.offsetHeight - margin)),
+  })
 }
 
 async function openContextMenu(event: MouseEvent, targetId: string) {
-  const margin = 12
+  closeDesktopMenu()
   contextMenu.value = {
     show: true,
     x: event.clientX,
@@ -594,17 +887,38 @@ async function openContextMenu(event: MouseEvent, targetId: string) {
     targetId,
   }
 
-  await nextTick()
-  const menu = contextMenuRef.value
-  if (!menu)
+  await positionMenu(contextMenuRef, { x: event.clientX, y: event.clientY }, ({ x, y }) => {
+    contextMenu.value.x = x
+    contextMenu.value.y = y
+  })
+}
+
+async function openDesktopMenu(event: MouseEvent) {
+  if (iconModal.value.show || activeFolder.value)
     return
 
-  contextMenu.value.x = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin)
-  contextMenu.value.y = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin)
+  const target = event.target as HTMLElement | null
+  if (target?.closest('[data-grid-item],[data-floating-panel],[data-prevent-desktop-menu]'))
+    return
+
+  closeContextMenu()
+  closeFolder()
+
+  desktopMenu.value = {
+    show: true,
+    x: event.clientX,
+    y: event.clientY,
+  }
+
+  await positionMenu(desktopMenuRef, { x: event.clientX, y: event.clientY }, ({ x, y }) => {
+    desktopMenu.value.x = x
+    desktopMenu.value.y = y
+  })
 }
 
 function openSettings() {
   closeContextMenu()
+  closeDesktopMenu()
 
   const browserApi = globalThis.browser as { runtime?: { openOptionsPage?: () => Promise<void> } } | undefined
   const chromeApi = globalThis.chrome as { runtime?: { openOptionsPage?: () => void } } | undefined
@@ -722,6 +1036,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
   if (event.key === 'Escape') {
     closeContextMenu()
+    closeDesktopMenu()
+    closeIconModal()
     closeFolder()
   }
 }
@@ -729,6 +1045,16 @@ function handleWindowKeydown(event: KeyboardEvent) {
 onClickOutside(contextMenuRef, () => {
   if (contextMenu.value.show)
     closeContextMenu()
+})
+
+onClickOutside(desktopMenuRef, () => {
+  if (desktopMenu.value.show)
+    closeDesktopMenu()
+})
+
+onClickOutside(iconModalPanelRef, () => {
+  if (iconModal.value.show)
+    closeIconModal()
 })
 
 watch(() => `${activePageId.value}:${visibleItems.value.map(item => item.id).join('|')}`, async () => {
@@ -739,12 +1065,16 @@ watch(() => `${activePageId.value}:${visibleItems.value.map(item => item.id).joi
 watch(keyword, () => {
   syncSortableState()
   closeContextMenu()
+  closeDesktopMenu()
   closeFolder()
+  closeIconModal()
 })
 
 watch(activePageId, () => {
   closeContextMenu()
+  closeDesktopMenu()
   closeFolder()
+  closeIconModal()
 })
 
 onMounted(async () => {
@@ -768,7 +1098,7 @@ onBeforeUnmount(() => {
   <div
     class="relative isolate min-h-screen overflow-hidden bg-slate-950 bg-cover bg-center bg-no-repeat text-white"
     :style="{ backgroundImage: `url(${scenicWallpaper})` }"
-    @contextmenu.prevent="closeContextMenu"
+    @contextmenu.prevent="openDesktopMenu"
   >
     <div class="absolute inset-0 bg-gradient-to-b from-slate-950/[0.04] via-slate-950/[0.12] to-slate-950/[0.32]" />
     <div class="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-slate-950/[0.32] to-transparent" />
@@ -844,11 +1174,12 @@ onBeforeUnmount(() => {
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id)"
               >
-                <div class="h-14 w-14 overflow-hidden rounded-2xl shadow-[0_12px_35px_rgba(15,23,42,0.22)] transition-transform duration-300 group-hover:scale-105 transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform">
+                <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
+                  <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10" />
                   <img
                     :src="item.icon"
                     :alt="item.title"
-                    class="h-full w-full rounded-2xl object-cover shadow-sm"
+                    class="relative h-full w-full rounded-2xl object-cover shadow-sm"
                   >
                 </div>
                 <span class="w-full truncate text-center text-xs text-white/90 drop-shadow-md">
@@ -862,9 +1193,11 @@ onBeforeUnmount(() => {
                 data-grid-item
                 class="group flex w-full max-w-[92px] flex-col items-center gap-1.5 justify-self-center self-start"
                 @click="openItem(item)"
+                @contextmenu.stop.prevent
               >
-                <div class="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.18] shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition-transform duration-300 group-hover:scale-105 transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform backdrop-blur-md">
-                  <div class="grid h-full w-full grid-cols-3 gap-1 p-2">
+                <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
+                  <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/[0.18] backdrop-blur-xl border border-white/10" />
+                  <div class="relative grid h-full w-full grid-cols-3 gap-1 p-2">
                     <div
                       v-for="child in item.children.slice(0, 6)"
                       :key="child.id"
@@ -886,14 +1219,17 @@ onBeforeUnmount(() => {
               <article
                 v-else
                 data-grid-item
-                class="group relative overflow-hidden rounded-[24px] border border-white/[0.14] bg-white/[0.16] p-4 shadow-[0_26px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform"
+                class="group relative isolate cursor-pointer transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
                 :class="widgetSpanClass(item.size)"
+                @contextmenu.stop.prevent
               >
-                <div class="absolute inset-0" :class="item.accentClass" />
-                <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full blur-3xl" :class="item.glowClass" />
-                <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
+                <div class="absolute inset-0 -z-10 overflow-hidden rounded-[24px] bg-white/[0.16] backdrop-blur-xl border border-white/[0.14] shadow-[0_26px_80px_rgba(15,23,42,0.18)]">
+                  <div class="absolute inset-0" :class="item.accentClass" />
+                  <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full blur-3xl" :class="item.glowClass" />
+                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
+                </div>
 
-                <div class="relative flex h-full flex-col">
+                <div class="relative flex h-full flex-col p-4">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="text-[11px] uppercase tracking-[0.28em] text-white/60">
@@ -968,7 +1304,9 @@ onBeforeUnmount(() => {
       >
         <div
           class="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/[0.12] bg-black/[0.22] p-6 shadow-[0_30px_100px_rgba(15,23,42,0.35)] backdrop-blur-2xl"
+          data-floating-panel
           @click.stop
+          @contextmenu.stop.prevent
         >
           <div class="absolute inset-0 bg-gradient-to-br from-white/15 via-white/5 to-transparent" />
 
@@ -1004,11 +1342,12 @@ onBeforeUnmount(() => {
                 @click="openApp(child)"
                 @contextmenu.stop.prevent="openContextMenu($event, child.id)"
               >
-                <div class="h-14 w-14 overflow-hidden rounded-2xl transition-transform duration-300 group-hover:scale-105 transform-gpu backface-hidden [backface-visibility:hidden] will-change-transform">
+                <div class="relative z-10 h-14 w-14 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]">
+                  <div class="absolute inset-0 -z-10 overflow-hidden rounded-2xl bg-white/10 backdrop-blur-xl border border-white/10" />
                   <img
                     :src="child.icon"
                     :alt="child.title"
-                    class="h-full w-full rounded-2xl object-cover shadow-sm"
+                    class="relative h-full w-full rounded-2xl object-cover shadow-sm"
                   >
                 </div>
                 <span class="w-full truncate text-center text-xs text-white/90 drop-shadow-md">
@@ -1025,8 +1364,10 @@ onBeforeUnmount(() => {
       type="button"
       title="设置"
       aria-label="打开设置"
+      data-prevent-desktop-menu
       class="fixed bottom-8 right-8 z-40 flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/10 bg-black/20 text-white/70 shadow-lg backdrop-blur-md transition-all hover:scale-110 hover:bg-white/20 hover:text-white transform-gpu"
       @click="openSettings"
+      @contextmenu.stop.prevent
     >
       <svg
         viewBox="0 0 24 24"
@@ -1053,12 +1394,13 @@ onBeforeUnmount(() => {
       <div
         v-if="contextMenu.show"
         ref="contextMenuRef"
+        data-floating-panel
         class="fixed z-50 w-48 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
         :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
         @contextmenu.stop.prevent
       >
         <ul>
-          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('编辑')">
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openEditIconModal">
             编辑
           </li>
           <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="contextTargetApp && openItemInNewTab(contextTargetApp)">
@@ -1083,5 +1425,223 @@ onBeforeUnmount(() => {
         </ul>
       </div>
     </transition>
+
+    <transition
+      enter-active-class="transition duration-150 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-100 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div
+        v-if="desktopMenu.show"
+        ref="desktopMenuRef"
+        data-floating-panel
+        class="fixed z-50 w-48 rounded-xl border border-white/10 bg-slate-900/70 py-1.5 text-sm text-white/90 shadow-2xl backdrop-blur-2xl"
+        :style="{ left: `${desktopMenu.x}px`, top: `${desktopMenu.y}px` }"
+        @contextmenu.stop.prevent
+      >
+        <ul>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openAddIconModal">
+            新增图标
+          </li>
+          <li class="cursor-pointer px-4 py-2 transition-colors hover:bg-white/10" @click="openWidgetTabModal">
+            小组件商店
+          </li>
+          <li class="flex cursor-pointer items-center justify-between px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('壁纸')">
+            <span>壁纸</span>
+            <span class="text-white/45">&gt;</span>
+          </li>
+          <li class="flex cursor-pointer items-center justify-between px-4 py-2 transition-colors hover:bg-white/10" @click="openSettings">
+            <span>设置</span>
+            <span class="text-white/45">&gt;</span>
+          </li>
+          <div class="my-1 h-px bg-white/10" />
+          <li class="flex cursor-pointer items-center justify-between px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('图标排列')">
+            <span>图标排列</span>
+            <span class="text-white/45">&gt;</span>
+          </li>
+          <li class="flex cursor-pointer items-center justify-between px-4 py-2 transition-colors hover:bg-white/10" @click="markContextAction('文件夹合并')">
+            <span>文件夹合并</span>
+            <span class="text-white/45">&gt;</span>
+          </li>
+        </ul>
+      </div>
+    </transition>
+
+    <transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div
+        v-if="iconModal.show"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+        @click="closeIconModal"
+        @contextmenu.stop.prevent
+      >
+        <div
+          ref="iconModalPanelRef"
+          data-floating-panel
+          class="flex w-[400px] max-w-full flex-col rounded-2xl border border-white/5 bg-[#1e2330] p-4 text-sm text-gray-200 shadow-2xl"
+          @click.stop
+        >
+          <div class="mb-4 flex rounded-xl bg-[#151924] p-1">
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-2 text-xs transition-colors"
+              :class="iconModalTab === 'store' ? 'bg-blue-600/30 text-white' : 'text-gray-400 hover:text-gray-200'"
+              @click="iconModalTab = 'store'"
+            >
+              图标商店
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-2 text-xs transition-colors"
+              :class="iconModalTab === 'custom' ? 'bg-blue-600/30 text-white' : 'text-gray-400 hover:text-gray-200'"
+              @click="iconModalTab = 'custom'"
+            >
+              图标自定义
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-lg px-3 py-2 text-xs transition-colors"
+              :class="iconModalTab === 'widget' ? 'bg-blue-600/30 text-white' : 'text-gray-400 hover:text-gray-200'"
+              @click="iconModalTab = 'widget'"
+            >
+              小组件
+            </button>
+          </div>
+
+          <template v-if="iconModalTab === 'custom'">
+            <div class="space-y-3">
+              <label class="block">
+                <span class="mb-1.5 block text-xs text-gray-400">外链地址</span>
+                <input
+                  v-model="iconModal.form.url"
+                  type="text"
+                  placeholder="https://example.com"
+                  class="w-full rounded-lg bg-[#151924] px-3 py-2 outline-none ring-blue-500 focus:ring-1"
+                >
+              </label>
+
+              <label class="block">
+                <span class="mb-1.5 block text-xs text-gray-400">图标链接</span>
+                <input
+                  v-model="iconModal.form.icon"
+                  type="text"
+                  placeholder="https://example.com/icon.png"
+                  class="w-full rounded-lg bg-[#151924] px-3 py-2 outline-none ring-blue-500 focus:ring-1"
+                >
+              </label>
+
+              <label class="block">
+                <span class="mb-1.5 block text-xs text-gray-400">图标名称</span>
+                <input
+                  v-model="iconModal.form.title"
+                  type="text"
+                  placeholder="输入图标名称"
+                  class="w-full rounded-lg bg-[#151924] px-3 py-2 outline-none ring-blue-500 focus:ring-1"
+                >
+              </label>
+
+              <label class="block">
+                <span class="mb-1.5 block text-xs text-gray-400">图标描述</span>
+                <input
+                  v-model="iconModal.form.desc"
+                  type="text"
+                  placeholder="输入图标描述"
+                  class="w-full rounded-lg bg-[#151924] px-3 py-2 outline-none ring-blue-500 focus:ring-1"
+                >
+              </label>
+
+              <label class="block">
+                <span class="mb-1.5 block text-xs text-gray-400">快捷键</span>
+                <input
+                  v-model="iconModal.form.shortcut"
+                  type="text"
+                  placeholder="例如：Cmd+K"
+                  class="w-full rounded-lg bg-[#151924] px-3 py-2 outline-none ring-blue-500 focus:ring-1"
+                >
+              </label>
+            </div>
+
+            <div class="mt-5">
+              <div class="flex justify-center">
+                <div class="relative h-20 w-20 overflow-hidden rounded-2xl bg-[#151924]">
+                  <div class="absolute inset-0 rounded-2xl border border-white/5 bg-white/[0.04]" />
+                  <img
+                    :src="iconPreviewSrc"
+                    alt="图标预览"
+                    class="relative h-full w-full object-cover"
+                  >
+                </div>
+              </div>
+
+              <div class="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg bg-[#151924] px-3 py-2 text-xs text-gray-200 transition hover:bg-[#202635]"
+                  @click="fetchIconForModal"
+                >
+                  抓取图标
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg bg-[#151924] px-3 py-2 text-xs text-gray-200 transition hover:bg-[#202635]"
+                  @click="useSolidIconForModal"
+                >
+                  纯色图标
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg bg-[#151924] px-3 py-2 text-xs text-gray-200 transition hover:bg-[#202635]"
+                  @click="triggerIconUpload"
+                >
+                  上传图标
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <div
+            v-else
+            class="flex min-h-[320px] items-center justify-center rounded-xl bg-[#151924] text-center text-sm text-gray-400"
+          >
+            {{ iconModalTab === 'store' ? '图标商店正在规划中。' : '小组件商店正在规划中。' }}
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              class="rounded-lg bg-[#151924] px-4 py-2 text-gray-300 transition hover:bg-[#202635]"
+              @click="closeIconModal"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-900/60 disabled:text-white/50"
+              :disabled="iconModalTab !== 'custom'"
+              @click="saveIconModal"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <input
+      ref="iconUploadInputRef"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      @change="handleIconUpload"
+    >
   </div>
 </template>
