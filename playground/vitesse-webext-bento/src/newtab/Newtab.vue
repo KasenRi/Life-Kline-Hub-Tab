@@ -2107,97 +2107,72 @@ onBeforeUnmount(() => {
             :style="gridStyle"
           >
             <template v-for="item in visibleItems" :key="item.id">
+              <!-- APP: 1x1 standard desktop icon -->
               <button
                 v-if="item.type === 'app' && isDefaultAppSize(item.size)"
                 type="button"
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="app"
-                class="group flex h-full w-full flex-col self-stretch justify-self-stretch"
+                class="group flex flex-col items-center gap-1.5"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="flex min-h-0 w-full flex-1 items-center justify-center">
-                  <div
-                    class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                    :style="iconSurfaceStyle"
+                <div class="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0">
+                  <img
+                    :src="item.icon"
+                    :alt="item.title"
+                    class="w-full h-full object-cover"
                   >
-                    <div class="absolute inset-0 -z-10 overflow-hidden border bg-white/10 backdrop-blur-xl" :style="iconBackdropStyle" />
-                    <img
-                      :src="item.icon"
-                      :alt="item.title"
-                      class="relative h-full w-full object-cover shadow-sm"
-                      :style="iconImageStyle"
-                    >
-                  </div>
                 </div>
-                <div class="flex min-h-[2.25rem] w-full flex-col items-center justify-start gap-1">
-                  <span
-                    v-if="appSettings.showIconLabels"
-                    class="w-full truncate px-1 text-center text-xs text-white/90 drop-shadow-md"
-                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                  >
-                    {{ item.title }}
-                  </span>
-                  <span
-                    v-if="appSettings.enableShortcutHints && item.shortcut"
-                    class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
-                  >
-                    {{ item.shortcut }}
-                  </span>
-                </div>
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >
+                  {{ item.title }}
+                </span>
               </button>
 
+              <!-- APP: larger card (1x2, 2x1, 2x2, etc.) -->
               <button
                 v-else-if="item.type === 'app'"
                 type="button"
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="app"
-                :class="getExpandedAppButtonClass(item)"
+                :class="['group', gridSpanClass(item.size)]"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <div
-                  class="relative h-full w-full overflow-hidden rounded-2xl border"
-                  :style="getExpandedAppCardStyle(item)"
+                  class="w-full h-full rounded-[24px] overflow-hidden flex flex-col items-center justify-center p-2 transition-transform duration-300 group-hover:scale-[1.02]"
+                  :style="{ backgroundColor: getAppTileBackground(item) }"
                 >
-                  <div class="absolute inset-0 bg-gradient-to-br from-white/12 via-white/[0.04] to-transparent" />
-                  <div class="absolute inset-x-0 top-0 h-px bg-white/20" />
-                  <div class="relative flex h-full w-full flex-col items-center justify-center p-4 pb-12">
-                    <img
-                      :src="item.icon"
-                      :alt="item.title"
-                      class="relative z-10 object-contain drop-shadow-[0_12px_28px_rgba(2,6,23,0.3)]"
-                      :style="largeAppIconStyle"
-                      @load="refreshDominantColor(item.icon, item.title)"
-                    >
-                  </div>
-                  <div class="pointer-events-none absolute inset-x-0 bottom-0 flex h-11 flex-col items-center justify-center px-3">
-                    <span
-                      v-if="appSettings.showIconLabels"
-                      class="block max-w-full truncate text-center text-sm text-white/92 drop-shadow-md"
-                      :style="getExpandedAppLabelStyle()"
-                    >
-                      {{ item.title }}
-                    </span>
-                    <span
-                      v-if="appSettings.enableShortcutHints && item.shortcut"
-                      class="mt-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
-                    >
-                      {{ item.shortcut }}
-                    </span>
-                  </div>
+                  <img
+                    :src="item.icon"
+                    :alt="item.title"
+                    class="w-16 h-16 object-contain flex-shrink-0"
+                    @load="refreshDominantColor(item.icon, item.title)"
+                  >
+                  <span
+                    v-if="appSettings.showIconLabels"
+                    class="mt-2 w-full truncate text-center text-sm text-white/92 drop-shadow-md"
+                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                  >
+                    {{ item.title }}
+                  </span>
                 </div>
               </button>
 
+              <!-- FOLDER: glass container with micro icon grid -->
               <button
                 v-else-if="item.type === 'folder'"
                 type="button"
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="folder"
-                :class="getFolderButtonClass(item)"
+                :class="['group flex flex-col items-center gap-1.5', gridSpanClass(item.size)]"
                 @dragover.prevent="handleFolderDragOver(item, $event)"
                 @dragleave="handleFolderDragLeave(item, $event)"
                 @drop="handleDropIntoFolder($event, item)"
@@ -2205,140 +2180,96 @@ onBeforeUnmount(() => {
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <div
-                  class="relative h-full w-full overflow-hidden rounded-2xl border bg-white/20 shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-md transition-all duration-200"
-                  :class="isFolderDragActive(item) ? 'scale-[1.02] ring-2 ring-sky-400/80' : ''"
-                  :style="getFolderPreviewSurfaceStyle(item)"
+                  class="w-full flex-1 min-h-0 rounded-2xl bg-white/20 backdrop-blur-md overflow-hidden transition-all duration-200"
+                  :class="isFolderDragActive(item) ? 'ring-4 ring-blue-500/50 scale-105' : ''"
                 >
-                  <div class="absolute inset-0 bg-gradient-to-br from-white/14 via-white/[0.06] to-transparent" />
-                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
-                  <div class="relative h-full w-full pb-10">
+                  <!-- 1x1 folder: 2x2 grid, max 4 children -->
+                  <div
+                    v-if="(item.size ?? '1x1') === '1x1'"
+                    class="grid grid-cols-2 gap-1 p-2 w-full h-full"
+                  >
                     <div
-                      v-if="(item.size ?? '1x1') === '1x1'"
-                      class="grid h-full w-full grid-cols-2 gap-1 p-2"
+                      v-for="(child, idx) in getFolderPreviewApps(item, 4)"
+                      :key="child?.id ?? `${item.id}-1x1-${idx}`"
+                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
                     >
-                      <div
-                        v-for="child in getFolderPreviewApps(item, 4)"
-                        :key="child?.id ?? `folder-${item.id}-1x1-empty`"
-                        class="aspect-square overflow-hidden rounded-md bg-white/[0.12]"
+                      <img
+                        v-if="child"
+                        :src="child.icon"
+                        :alt="child.title"
+                        class="w-full aspect-square rounded-md object-cover"
+                        @load="ensureDominantColor(child.icon, child.title)"
                       >
-                        <img
-                          v-if="child"
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                          @load="ensureDominantColor(child.icon, child.title)"
-                        >
-                      </div>
-                    </div>
-
-                    <div
-                      v-else-if="item.size === '2x1'"
-                      class="grid h-full w-full grid-cols-4 items-center gap-2 p-3"
-                    >
-                      <div
-                        v-for="child in getFolderPreviewApps(item, 8)"
-                        :key="child?.id ?? `folder-${item.id}-2x1-empty`"
-                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
-                      >
-                        <img
-                          v-if="child"
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                          @load="ensureDominantColor(child.icon, child.title)"
-                        >
-                      </div>
-                    </div>
-
-                    <div
-                      v-else-if="item.size === '1x2'"
-                      class="grid h-full w-full grid-cols-2 items-center gap-2 p-3"
-                    >
-                      <div
-                        v-for="child in getFolderPreviewApps(item, 8)"
-                        :key="child?.id ?? `folder-${item.id}-1x2-empty`"
-                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
-                      >
-                        <img
-                          v-if="child"
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                          @load="ensureDominantColor(child.icon, child.title)"
-                        >
-                      </div>
-                    </div>
-
-                    <div
-                      v-else-if="item.size === '2x2'"
-                      class="grid h-full w-full grid-cols-4 gap-3 p-4"
-                    >
-                      <div
-                        v-for="child in getFolderPreviewApps(item, 8)"
-                        :key="child?.id ?? `folder-${item.id}-2x2-empty`"
-                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
-                      >
-                        <img
-                          v-if="child"
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                          @load="ensureDominantColor(child.icon, child.title)"
-                        >
-                      </div>
-                    </div>
-
-                    <div
-                      v-else-if="isLargeFolderPreviewSize(item.size)"
-                      class="grid h-full w-full grid-cols-8 gap-3 p-4"
-                    >
-                      <div
-                        v-for="child in getFolderPreviewApps(item, 16)"
-                        :key="child?.id ?? `folder-${item.id}-large-empty`"
-                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
-                      >
-                        <img
-                          v-if="child"
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                          @load="ensureDominantColor(child.icon, child.title)"
-                        >
-                      </div>
-                    </div>
-
-                    <div
-                      v-else
-                      class="grid h-full w-full grid-cols-8 gap-3 p-4"
-                    >
-                      <div
-                        v-for="child in getFolderPreviewApps(item, 16)"
-                        :key="child?.id ?? `folder-${item.id}-fallback-empty`"
-                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
-                      >
-                        <img
-                          v-if="child"
-                          :src="child.icon"
-                          :alt="child.title"
-                          class="h-full w-full object-cover"
-                          @load="ensureDominantColor(child.icon, child.title)"
-                        >
-                      </div>
                     </div>
                   </div>
-                  <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+
+                  <!-- 1x2 folder: 2-col grid, vertical -->
                   <div
-                    v-if="appSettings.showIconLabels"
-                    class="pointer-events-none absolute inset-x-0 bottom-0 flex h-10 items-center justify-center px-3"
+                    v-else-if="item.size === '1x2'"
+                    class="grid grid-cols-2 gap-2 p-3 w-full h-full content-start"
                   >
-                    <span
-                      class="block w-full truncate text-center text-xs text-white/92 drop-shadow-md"
-                      :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                    <div
+                      v-for="(child, idx) in getFolderPreviewApps(item, 8)"
+                      :key="child?.id ?? `${item.id}-1x2-${idx}`"
+                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
                     >
-                      {{ item.title }}
-                    </span>
+                      <img
+                        v-if="child"
+                        :src="child.icon"
+                        :alt="child.title"
+                        class="w-full aspect-square rounded-md object-cover"
+                        @load="ensureDominantColor(child.icon, child.title)"
+                      >
+                    </div>
+                  </div>
+
+                  <!-- 2x1 folder: 4-col grid, horizontal -->
+                  <div
+                    v-else-if="item.size === '2x1'"
+                    class="grid grid-cols-4 gap-2 p-3 w-full h-full items-center"
+                  >
+                    <div
+                      v-for="(child, idx) in getFolderPreviewApps(item, 8)"
+                      :key="child?.id ?? `${item.id}-2x1-${idx}`"
+                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
+                    >
+                      <img
+                        v-if="child"
+                        :src="child.icon"
+                        :alt="child.title"
+                        class="w-full aspect-square rounded-md object-cover"
+                        @load="ensureDominantColor(child.icon, child.title)"
+                      >
+                    </div>
+                  </div>
+
+                  <!-- 2x2 and larger: 4-col grid -->
+                  <div
+                    v-else
+                    class="grid grid-cols-4 gap-3 p-4 w-full h-full"
+                  >
+                    <div
+                      v-for="(child, idx) in getFolderPreviewApps(item, 16)"
+                      :key="child?.id ?? `${item.id}-lg-${idx}`"
+                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
+                    >
+                      <img
+                        v-if="child"
+                        :src="child.icon"
+                        :alt="child.title"
+                        class="w-full aspect-square rounded-md object-cover"
+                        @load="ensureDominantColor(child.icon, child.title)"
+                      >
+                    </div>
                   </div>
                 </div>
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md flex-shrink-0"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >
+                  {{ item.title }}
+                </span>
               </button>
 
               <article
