@@ -74,13 +74,6 @@ interface TopLevelItemLocation {
   item: DesktopItem
 }
 
-interface FolderPreviewCell {
-  id: string
-  app: AppItem | null
-  emphasis: 'primary' | 'secondary'
-  splitApps?: [AppItem | null, AppItem | null]
-}
-
 type IconModalTab = 'store' | 'custom' | 'widget'
 type IconModalMode = 'add' | 'edit'
 
@@ -404,6 +397,10 @@ const iconUploadInputRef = ref<HTMLInputElement | null>(null)
 const iconModalTargetId = ref<string | null>(null)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 const wheelPageTurnLockedUntil = ref(0)
+const draggedGridItemId = ref<string | null>(null)
+const draggedGridItemType = ref<ItemType | null>(null)
+const dragOverFolderId = ref<string | null>(null)
+const pendingDropFolderId = ref<string | null>(null)
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
@@ -513,9 +510,6 @@ const iconRadiusPx = computed(() => `${Math.round((appSettings.value.iconSize / 
 const iconSurfaceStyle = computed(() => ({
   width: iconPixelSize.value,
   height: iconPixelSize.value,
-}))
-const iconButtonStyle = computed(() => ({
-  maxWidth: `${appSettings.value.iconSize + 36}px`,
 }))
 const iconImageStyle = computed(() => ({
   borderRadius: iconRadiusPx.value,
@@ -761,7 +755,7 @@ function getExpandedAppLabelStyle() {
 
 function getExpandedAppButtonClass(app: AppItem) {
   return [
-    'group relative flex h-full w-full self-stretch justify-self-stretch transition-transform duration-300',
+    'group relative flex h-full w-full flex-col self-stretch justify-self-stretch transition-transform duration-300',
     'hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]',
     gridSpanClass(app.size),
   ]
@@ -769,123 +763,10 @@ function getExpandedAppButtonClass(app: AppItem) {
 
 function getFolderButtonClass(folder: FolderItem) {
   return [
-    'group relative flex h-full w-full self-stretch justify-self-stretch transition-transform duration-300',
+    'group relative flex h-full w-full flex-col self-stretch justify-self-stretch transition-transform duration-300',
     'hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]',
     gridSpanClass(folder.size),
   ]
-}
-
-function createFolderPreviewCell(index: number, app: AppItem | null, emphasis: 'primary' | 'secondary'): FolderPreviewCell {
-  return {
-    id: `${emphasis}-${index}-${app?.id ?? 'empty'}`,
-    app,
-    emphasis,
-  }
-}
-
-function createSplitFolderPreviewCell(index: number, first: AppItem | null, second: AppItem | null): FolderPreviewCell {
-  return {
-    id: `split-${index}-${first?.id ?? 'empty'}-${second?.id ?? 'empty'}`,
-    app: null,
-    emphasis: 'secondary',
-    splitApps: [first, second],
-  }
-}
-
-function getFolderPreviewLayout(folder: FolderItem) {
-  const size = folder.size ?? '1x1'
-  const children = folder.children
-
-  if (size === '1x1') {
-    if (children.length <= 4) {
-      return {
-        shellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
-        primaryClass: 'h-full w-full',
-        secondaryShellClass: '',
-        secondaryClass: '',
-        primaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'secondary')),
-        secondaryCells: [] as FolderPreviewCell[],
-      }
-    }
-
-    return {
-      shellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
-      primaryClass: 'h-full w-full',
-      secondaryShellClass: '',
-      secondaryClass: '',
-      primaryCells: [
-        createFolderPreviewCell(0, children[0] ?? null, 'secondary'),
-        createFolderPreviewCell(1, children[1] ?? null, 'secondary'),
-        createFolderPreviewCell(2, children[2] ?? null, 'secondary'),
-        createSplitFolderPreviewCell(3, children[3] ?? null, children[4] ?? null),
-      ],
-      secondaryCells: [] as FolderPreviewCell[],
-    }
-  }
-
-  if (size === '2x1') {
-    return {
-      shellClass: 'grid h-full w-full grid-cols-[1.2fr_0.95fr] gap-2.5',
-      primaryClass: 'grid h-full w-full grid-cols-2 gap-2',
-      secondaryShellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
-      secondaryClass: 'h-full w-full',
-      primaryCells: Array.from({ length: 2 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
-      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 2] ?? null, 'secondary')),
-    }
-  }
-
-  if (size === '1x2') {
-    return {
-      shellClass: 'grid h-full w-full grid-rows-[1.15fr_0.95fr] gap-2.5',
-      primaryClass: 'grid h-full w-full grid-cols-2 gap-2',
-      secondaryShellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
-      secondaryClass: 'h-full w-full',
-      primaryCells: Array.from({ length: 2 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
-      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 2] ?? null, 'secondary')),
-    }
-  }
-
-  if (size === '2x2') {
-    return {
-      shellClass: 'grid h-full w-full grid-rows-[1.55fr_0.72fr] gap-2.5',
-      primaryClass: 'grid h-full w-full grid-cols-4 grid-rows-2 gap-2',
-      secondaryShellClass: 'grid h-full w-full grid-cols-4 gap-1.5',
-      secondaryClass: 'h-full w-full',
-      primaryCells: Array.from({ length: 8 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
-      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 8] ?? null, 'secondary')),
-    }
-  }
-
-  if (size === '4x4') {
-    return {
-      shellClass: 'grid h-full w-full grid-rows-[1.7fr_0.7fr] gap-3',
-      primaryClass: 'grid h-full w-full grid-cols-4 grid-rows-3 gap-2.5',
-      secondaryShellClass: 'grid h-full w-full grid-cols-4 gap-1.5',
-      secondaryClass: 'h-full w-full',
-      primaryCells: Array.from({ length: 12 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
-      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 12] ?? null, 'secondary')),
-    }
-  }
-
-  if (size === '4x2') {
-    return {
-      shellClass: 'grid h-full w-full grid-cols-[1.8fr_0.88fr] gap-2.5',
-      primaryClass: 'grid h-full w-full grid-cols-3 grid-rows-3 gap-2',
-      secondaryShellClass: 'grid h-full w-full grid-cols-2 grid-rows-2 gap-1.5',
-      secondaryClass: 'h-full w-full',
-      primaryCells: Array.from({ length: 9 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
-      secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 9] ?? null, 'secondary')),
-    }
-  }
-
-  return {
-    shellClass: 'grid h-full w-full grid-rows-[1.8fr_0.78fr] gap-2.5',
-    primaryClass: 'grid h-full w-full grid-cols-3 grid-rows-3 gap-2',
-    secondaryShellClass: 'grid h-full w-full grid-cols-4 gap-1.5',
-    secondaryClass: 'h-full w-full',
-    primaryCells: Array.from({ length: 9 }, (_, index) => createFolderPreviewCell(index, children[index] ?? null, 'primary')),
-    secondaryCells: Array.from({ length: 4 }, (_, index) => createFolderPreviewCell(index, children[index + 9] ?? null, 'secondary')),
-  }
 }
 
 function getFolderPreviewSurfaceStyle() {
@@ -894,18 +775,6 @@ function getFolderPreviewSurfaceStyle() {
     boxShadow: `0 22px 52px ${withAlpha('#020617', 0.22)}`,
     backgroundColor: withAlpha('#FFFFFF', 0.12),
   }
-}
-
-function getFolderPreviewCardClass(cell: FolderPreviewCell) {
-  return cell.emphasis === 'primary'
-    ? 'flex h-full w-full items-center justify-center overflow-hidden rounded-[18px] bg-white/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-    : 'flex h-full w-full items-center justify-center overflow-hidden rounded-[14px] bg-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-}
-
-function getFolderPreviewImageClass(cell: FolderPreviewCell) {
-  return cell.emphasis === 'primary'
-    ? 'h-full w-full object-cover'
-    : 'h-[72%] w-[72%] object-contain'
 }
 
 function collectPageIconSources(page: DesktopPage | null) {
@@ -921,6 +790,86 @@ function collectPageIconSources(page: DesktopPage | null) {
 
     return []
   })
+}
+
+function getFolderPreviewApps(folder: FolderItem, count: number) {
+  return Array.from({ length: count }, (_, index) => folder.children[index] ?? null)
+}
+
+function isLargeFolderPreviewSize(size: GridSize | undefined) {
+  return size === '4x2' || size === '2x4' || size === '4x4'
+}
+
+function isFolderDragActive(folder: FolderItem) {
+  return dragOverFolderId.value === folder.id && draggedGridItemType.value === 'app'
+}
+
+function resetFolderDragState() {
+  dragOverFolderId.value = null
+  pendingDropFolderId.value = null
+}
+
+function handleFolderDragOver(folder: FolderItem, event: DragEvent) {
+  event.preventDefault()
+  if (draggedGridItemType.value === 'app' && draggedGridItemId.value !== folder.id)
+    dragOverFolderId.value = folder.id
+}
+
+function handleFolderDragLeave(folder: FolderItem, event: DragEvent) {
+  const relatedTarget = event.relatedTarget as Node | null
+  const currentTarget = event.currentTarget as HTMLElement | null
+  if (currentTarget?.contains(relatedTarget))
+    return
+
+  if (dragOverFolderId.value === folder.id)
+    dragOverFolderId.value = null
+}
+
+function moveAppIntoFolder(appId: string | null, folderId: string | null) {
+  const page = activePage.value
+  if (!page || !appId || !folderId || appId === folderId)
+    return false
+
+  const appLocation = findAppLocation(appId)
+  if (!appLocation || appLocation.childIndex != null)
+    return false
+
+  const folderLocation = findTopLevelItemLocation(folderId)
+  if (!folderLocation?.item || !isFolderItem(folderLocation.item))
+    return false
+
+  const movedApp = appLocation.app
+  const nextItems = page.items
+    .filter(item => item.id !== movedApp.id)
+    .map((item) => {
+      if (!isFolderItem(item) || item.id !== folderId)
+        return item
+
+      return {
+        ...item,
+        children: [...item.children, movedApp],
+      }
+    })
+
+  const pageIndex = pages.value.findIndex(item => item.id === page.id)
+  if (pageIndex < 0)
+    return false
+
+  const nextPages = [...pages.value]
+  nextPages[pageIndex] = {
+    ...page,
+    items: nextItems,
+  }
+  pages.value = nextPages
+  return true
+}
+
+function handleDropIntoFolder(event: DragEvent, folder: FolderItem) {
+  event.preventDefault()
+  if (draggedGridItemType.value !== 'app' || draggedGridItemId.value === folder.id)
+    return
+
+  pendingDropFolderId.value = folder.id
 }
 
 function updateClock() {
@@ -1887,11 +1836,45 @@ function initSortable() {
     chosenClass: 'scale-105',
     dragClass: 'rotate-1',
     draggable: '[data-grid-item]',
+    onStart(event: SortableEvent) {
+      const item = event.item as HTMLElement | null
+      draggedGridItemId.value = item?.dataset.itemId ?? null
+      draggedGridItemType.value = (item?.dataset.itemType as ItemType | undefined) ?? null
+      resetFolderDragState()
+    },
+    onMove(event: { dragged: HTMLElement, related: HTMLElement | null }, originalEvent: Event) {
+      if (draggedGridItemType.value !== 'app') {
+        dragOverFolderId.value = null
+        return true
+      }
+
+      const target = originalEvent.target as HTMLElement | null
+      const folderElement = target?.closest('[data-item-type="folder"]') as HTMLElement | null
+      const folderId = folderElement?.dataset.itemId ?? null
+      dragOverFolderId.value = folderId && folderId !== draggedGridItemId.value ? folderId : null
+      return true
+    },
     onEnd(event: SortableEvent) {
-      if (event.oldIndex == null || event.newIndex == null)
+      const dropFolderId = pendingDropFolderId.value ?? dragOverFolderId.value
+      if (draggedGridItemType.value === 'app' && dropFolderId) {
+        moveAppIntoFolder(draggedGridItemId.value, dropFolderId)
+        draggedGridItemId.value = null
+        draggedGridItemType.value = null
+        resetFolderDragState()
         return
+      }
+
+      if (event.oldIndex == null || event.newIndex == null) {
+        draggedGridItemId.value = null
+        draggedGridItemType.value = null
+        resetFolderDragState()
+        return
+      }
 
       reorderActivePage(event.oldIndex, event.newIndex)
+      draggedGridItemId.value = null
+      draggedGridItemType.value = null
+      resetFolderDragState()
     },
   })
 
@@ -2128,71 +2111,37 @@ onBeforeUnmount(() => {
                 v-if="item.type === 'app' && isDefaultAppSize(item.size)"
                 type="button"
                 data-grid-item
+                :data-item-id="item.id"
                 data-item-type="app"
-                class="group flex flex-col items-center gap-1.5 justify-self-center self-start"
-                :style="iconButtonStyle"
+                class="group flex h-full w-full flex-col self-stretch justify-self-stretch"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div
-                  class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                  :style="iconSurfaceStyle"
-                >
-                  <div class="absolute inset-0 -z-10 overflow-hidden border bg-white/10 backdrop-blur-xl" :style="iconBackdropStyle" />
-                  <img
-                    :src="item.icon"
-                    :alt="item.title"
-                    class="relative h-full w-full object-cover shadow-sm"
-                    :style="iconImageStyle"
+                <div class="flex min-h-0 w-full flex-1 items-center justify-center">
+                  <div
+                    class="relative z-10 transition-transform duration-300 group-hover:scale-105 transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                    :style="iconSurfaceStyle"
                   >
+                    <div class="absolute inset-0 -z-10 overflow-hidden border bg-white/10 backdrop-blur-xl" :style="iconBackdropStyle" />
+                    <img
+                      :src="item.icon"
+                      :alt="item.title"
+                      class="relative h-full w-full object-cover shadow-sm"
+                      :style="iconImageStyle"
+                    >
+                  </div>
                 </div>
-                <span
-                  v-if="appSettings.showIconLabels"
-                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
-                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                >
-                  {{ item.title }}
-                </span>
-                <span
-                  v-if="appSettings.enableShortcutHints && item.shortcut"
-                  class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
-                >
-                  {{ item.shortcut }}
-                </span>
-              </button>
-
-              <button
-                v-else-if="item.type === 'app'"
-                type="button"
-                data-grid-item
-                data-item-type="app"
-                :class="getExpandedAppButtonClass(item)"
-                @click="openItem(item)"
-                @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
-              >
-                <div
-                  class="relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-[24px] border p-4"
-                  :style="getExpandedAppCardStyle(item)"
-                >
-                  <div class="absolute inset-0 bg-gradient-to-br from-white/12 via-white/[0.04] to-transparent" />
-                  <div class="absolute inset-x-0 top-0 h-px bg-white/20" />
-                  <img
-                    :src="item.icon"
-                    :alt="item.title"
-                    class="relative z-10 object-contain drop-shadow-[0_12px_28px_rgba(2,6,23,0.3)]"
-                    :style="largeAppIconStyle"
-                    @load="refreshDominantColor(item.icon, item.title)"
-                  >
+                <div class="flex min-h-[2.25rem] w-full flex-col items-center justify-start gap-1">
                   <span
                     v-if="appSettings.showIconLabels"
-                    class="relative z-10 mt-3 max-w-full truncate text-center text-sm text-white/92 drop-shadow-md"
-                    :style="getExpandedAppLabelStyle()"
+                    class="w-full truncate px-1 text-center text-xs text-white/90 drop-shadow-md"
+                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                   >
                     {{ item.title }}
                   </span>
                   <span
                     v-if="appSettings.enableShortcutHints && item.shortcut"
-                    class="relative z-10 mt-2 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                    class="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
                   >
                     {{ item.shortcut }}
                   </span>
@@ -2200,82 +2149,195 @@ onBeforeUnmount(() => {
               </button>
 
               <button
-                v-else-if="item.type === 'folder'"
+                v-else-if="item.type === 'app'"
                 type="button"
                 data-grid-item
-                data-item-type="folder"
-                :class="getFolderButtonClass(item)"
+                :data-item-id="item.id"
+                data-item-type="app"
+                :class="getExpandedAppButtonClass(item)"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="absolute inset-0 -z-10 overflow-hidden rounded-[30px] border bg-white/[0.08] shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-xl" :style="getFolderPreviewSurfaceStyle(item)">
-                  <div class="absolute inset-0 bg-gradient-to-br from-white/14 via-white/[0.06] to-transparent" />
-                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
-                </div>
-
-                <div class="relative flex h-full w-full min-h-0 p-3 sm:p-4">
-                  <div
-                    class="relative h-full w-full overflow-hidden rounded-[24px] border bg-white/20 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md"
-                    :style="getFolderPreviewSurfaceStyle(item)"
-                  >
-                    <template v-for="layout in [getFolderPreviewLayout(item)]" :key="layout.shellClass + item.id">
-                      <div :class="layout.shellClass">
-                        <div :class="layout.primaryClass">
-                          <template v-for="cell in layout.primaryCells" :key="cell.id">
-                            <div v-if="cell.splitApps" class="grid h-full w-full grid-rows-2 gap-1.5 rounded-[14px] bg-white/[0.08] p-1">
-                              <div
-                                v-for="splitApp in cell.splitApps"
-                                :key="splitApp?.id ?? `${cell.id}-empty`"
-                                class="flex items-center justify-center overflow-hidden rounded-[10px] bg-white/[0.12]"
-                              >
-                                <img
-                                  v-if="splitApp"
-                                  :src="splitApp.icon"
-                                  :alt="splitApp.title"
-                                  class="h-[72%] w-[72%] object-contain"
-                                  @load="ensureDominantColor(splitApp.icon, splitApp.title)"
-                                >
-                              </div>
-                            </div>
-
-                            <div v-else :class="getFolderPreviewCardClass(cell)">
-                              <img
-                                v-if="cell.app"
-                                :src="cell.app.icon"
-                                :alt="cell.app.title"
-                                :class="getFolderPreviewImageClass(cell)"
-                                @load="ensureDominantColor(cell.app.icon, cell.app.title)"
-                              >
-                            </div>
-                          </template>
-                        </div>
-
-                        <div v-if="layout.secondaryCells.length" :class="layout.secondaryShellClass">
-                          <div v-for="cell in layout.secondaryCells" :key="cell.id" :class="[getFolderPreviewCardClass(cell), layout.secondaryClass]">
-                            <img
-                              v-if="cell.app"
-                              :src="cell.app.icon"
-                              :alt="cell.app.title"
-                              :class="getFolderPreviewImageClass(cell)"
-                              @load="ensureDominantColor(cell.app.icon, cell.app.title)"
-                            >
-                          </div>
-                        </div>
-                      </div>
-                    </template>
+                <div
+                  class="relative h-full w-full overflow-hidden rounded-2xl border"
+                  :style="getExpandedAppCardStyle(item)"
+                >
+                  <div class="absolute inset-0 bg-gradient-to-br from-white/12 via-white/[0.04] to-transparent" />
+                  <div class="absolute inset-x-0 top-0 h-px bg-white/20" />
+                  <div class="relative flex h-full w-full flex-col items-center justify-center p-4 pb-12">
+                    <img
+                      :src="item.icon"
+                      :alt="item.title"
+                      class="relative z-10 object-contain drop-shadow-[0_12px_28px_rgba(2,6,23,0.3)]"
+                      :style="largeAppIconStyle"
+                      @load="refreshDominantColor(item.icon, item.title)"
+                    >
+                  </div>
+                  <div class="pointer-events-none absolute inset-x-0 bottom-0 flex h-11 flex-col items-center justify-center px-3">
+                    <span
+                      v-if="appSettings.showIconLabels"
+                      class="block max-w-full truncate text-center text-sm text-white/92 drop-shadow-md"
+                      :style="getExpandedAppLabelStyle()"
+                    >
+                      {{ item.title }}
+                    </span>
+                    <span
+                      v-if="appSettings.enableShortcutHints && item.shortcut"
+                      class="mt-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/60 backdrop-blur-sm"
+                    >
+                      {{ item.shortcut }}
+                    </span>
                   </div>
                 </div>
+              </button>
 
+              <button
+                v-else-if="item.type === 'folder'"
+                type="button"
+                data-grid-item
+                :data-item-id="item.id"
+                data-item-type="folder"
+                :class="getFolderButtonClass(item)"
+                @dragover.prevent="handleFolderDragOver(item, $event)"
+                @dragleave="handleFolderDragLeave(item, $event)"
+                @drop="handleDropIntoFolder($event, item)"
+                @click="openItem(item)"
+                @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
+              >
                 <div
-                  v-if="appSettings.showIconLabels"
-                  class="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[30px] bg-gradient-to-t from-black/55 via-black/15 to-transparent px-3 pb-2.5 pt-10"
+                  class="relative h-full w-full overflow-hidden rounded-2xl border bg-white/20 shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop-blur-md transition-all duration-200"
+                  :class="isFolderDragActive(item) ? 'scale-[1.02] ring-2 ring-sky-400/80' : ''"
+                  :style="getFolderPreviewSurfaceStyle(item)"
                 >
-                  <span
-                    class="block w-full truncate text-center text-xs text-white/92 drop-shadow-md"
-                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                  <div class="absolute inset-0 bg-gradient-to-br from-white/14 via-white/[0.06] to-transparent" />
+                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
+                  <div class="relative h-full w-full pb-10">
+                    <div
+                      v-if="(item.size ?? '1x1') === '1x1'"
+                      class="grid h-full w-full grid-cols-2 gap-1 p-2"
+                    >
+                      <div
+                        v-for="child in getFolderPreviewApps(item, 4)"
+                        :key="child?.id ?? `folder-${item.id}-1x1-empty`"
+                        class="aspect-square overflow-hidden rounded-md bg-white/[0.12]"
+                      >
+                        <img
+                          v-if="child"
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                          @load="ensureDominantColor(child.icon, child.title)"
+                        >
+                      </div>
+                    </div>
+
+                    <div
+                      v-else-if="item.size === '2x1'"
+                      class="grid h-full w-full grid-cols-4 items-center gap-2 p-3"
+                    >
+                      <div
+                        v-for="child in getFolderPreviewApps(item, 8)"
+                        :key="child?.id ?? `folder-${item.id}-2x1-empty`"
+                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
+                      >
+                        <img
+                          v-if="child"
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                          @load="ensureDominantColor(child.icon, child.title)"
+                        >
+                      </div>
+                    </div>
+
+                    <div
+                      v-else-if="item.size === '1x2'"
+                      class="grid h-full w-full grid-cols-2 items-center gap-2 p-3"
+                    >
+                      <div
+                        v-for="child in getFolderPreviewApps(item, 8)"
+                        :key="child?.id ?? `folder-${item.id}-1x2-empty`"
+                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
+                      >
+                        <img
+                          v-if="child"
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                          @load="ensureDominantColor(child.icon, child.title)"
+                        >
+                      </div>
+                    </div>
+
+                    <div
+                      v-else-if="item.size === '2x2'"
+                      class="grid h-full w-full grid-cols-4 gap-3 p-4"
+                    >
+                      <div
+                        v-for="child in getFolderPreviewApps(item, 8)"
+                        :key="child?.id ?? `folder-${item.id}-2x2-empty`"
+                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
+                      >
+                        <img
+                          v-if="child"
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                          @load="ensureDominantColor(child.icon, child.title)"
+                        >
+                      </div>
+                    </div>
+
+                    <div
+                      v-else-if="isLargeFolderPreviewSize(item.size)"
+                      class="grid h-full w-full grid-cols-8 gap-3 p-4"
+                    >
+                      <div
+                        v-for="child in getFolderPreviewApps(item, 16)"
+                        :key="child?.id ?? `folder-${item.id}-large-empty`"
+                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
+                      >
+                        <img
+                          v-if="child"
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                          @load="ensureDominantColor(child.icon, child.title)"
+                        >
+                      </div>
+                    </div>
+
+                    <div
+                      v-else
+                      class="grid h-full w-full grid-cols-8 gap-3 p-4"
+                    >
+                      <div
+                        v-for="child in getFolderPreviewApps(item, 16)"
+                        :key="child?.id ?? `folder-${item.id}-fallback-empty`"
+                        class="aspect-square overflow-hidden rounded-lg bg-white/[0.12]"
+                      >
+                        <img
+                          v-if="child"
+                          :src="child.icon"
+                          :alt="child.title"
+                          class="h-full w-full object-cover"
+                          @load="ensureDominantColor(child.icon, child.title)"
+                        >
+                      </div>
+                    </div>
+                  </div>
+                  <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+                  <div
+                    v-if="appSettings.showIconLabels"
+                    class="pointer-events-none absolute inset-x-0 bottom-0 flex h-10 items-center justify-center px-3"
                   >
-                    {{ item.title }}
-                  </span>
+                    <span
+                      class="block w-full truncate text-center text-xs text-white/92 drop-shadow-md"
+                      :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                    >
+                      {{ item.title }}
+                    </span>
+                  </div>
                 </div>
               </button>
 
