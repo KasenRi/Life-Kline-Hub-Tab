@@ -499,12 +499,12 @@ const effectiveGridColumns = computed(() => {
   return preferred
 })
 const gridStyle = computed(() => {
-  const rowSize = Math.max(98, Math.round(appSettings.value.iconSize * 1.76))
   return {
-    gridTemplateColumns: `repeat(${effectiveGridColumns.value}, minmax(0, 1fr))`,
-    gridAutoRows: `${rowSize}px`,
-    columnGap: `${appSettings.value.iconGap}px`,
-    rowGap: `${Math.max(24, appSettings.value.iconGap + 12)}px`,
+    '--a': `${appSettings.value.iconSize + 16}px`,
+    '--gap': `${appSettings.value.iconGap}px`,
+    gap: 'var(--gap)',
+    gridTemplateColumns: `repeat(${effectiveGridColumns.value}, var(--a))`,
+    gridAutoRows: 'var(--a)'
   }
 })
 const iconPixelSize = computed(() => `${appSettings.value.iconSize}px`)
@@ -599,19 +599,13 @@ function isDefaultAppSize(size: GridSize | undefined) {
 }
 
 function gridSpanClass(size: GridSize | undefined) {
-  if (size === '1x2')
-    return 'row-span-2'
-  if (size === '2x1')
-    return 'col-span-2'
-  if (size === '2x2')
-    return 'col-span-2 row-span-2'
-  if (size === '2x4')
-    return 'col-span-2 row-span-4'
-  if (size === '4x2')
-    return 'col-span-4 row-span-2'
-  if (size === '4x4')
-    return 'col-span-4 row-span-4'
-  return ''
+  if (size === '1x2') return 'col-span-1 row-span-2'
+  if (size === '2x1') return 'col-span-2 row-span-1'
+  if (size === '2x2') return 'col-span-2 row-span-2'
+  if (size === '2x4') return 'col-span-2 row-span-4'
+  if (size === '4x2') return 'col-span-4 row-span-2'
+  if (size === '4x4') return 'col-span-4 row-span-4'
+  return 'col-span-1 row-span-1'
 }
 
 function buildFolderId() {
@@ -2057,7 +2051,7 @@ onBeforeUnmount(() => {
           <div
             v-if="visibleItems.length"
             ref="gridRef"
-            class="grid grid-flow-dense justify-items-center"
+            class="grid grid-flow-dense justify-center"
             :style="gridStyle"
           >
             <template v-for="item in visibleItems" :key="item.id">
@@ -2068,12 +2062,12 @@ onBeforeUnmount(() => {
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="app"
-                class="group relative cursor-pointer flex flex-col items-center justify-center w-full h-full gap-2 transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
+                :class="['group relative cursor-pointer flex flex-col items-center justify-center transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]', gridSpanClass(item.size)]"
                 @dragstart="draggingAppId = item.id"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="w-16 h-16 rounded-[18px] flex-shrink-0 overflow-hidden shadow-sm border border-black/5 pointer-events-none">
+                <div class="w-full h-full rounded-[18px] overflow-hidden shadow-sm border border-black/5 pointer-events-none">
                   <img
                     :src="item.icon"
                     :alt="item.title"
@@ -2083,7 +2077,7 @@ onBeforeUnmount(() => {
                 </div>
                 <span
                   v-if="appSettings.showIconLabels"
-                  class="text-xs text-white/90 truncate w-full text-center drop-shadow-md px-1 pointer-events-none"
+                  class="absolute -bottom-6 w-full text-center text-xs text-white/90 truncate drop-shadow-md pointer-events-none"
                   :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                 >{{ item.title }}</span>
               </button>
@@ -2140,17 +2134,17 @@ onBeforeUnmount(() => {
               >
                 <!-- Morph A (1x1) -->
                 <template v-if="(item.size ?? '1x1') === '1x1'">
-                  <div class="grid grid-cols-2 gap-1 w-16 h-16 flex-shrink-0 aspect-square p-2 bg-white/20 backdrop-blur-md rounded-2xl overflow-hidden border border-white/20 shadow-sm pointer-events-none">
+                  <div class="grid grid-cols-2 gap-1 w-full h-full p-2 bg-white/20 backdrop-blur-md rounded-2xl overflow-hidden border border-white/20 shadow-sm pointer-events-none">
                     <img
                       v-for="(child, idx) in item.children.slice(0, 4)"
                       :key="child?.id ?? `${item.id}-1x1-${idx}`"
                       :src="child.icon"
-                      class="w-full h-full object-cover rounded-md"
+                      class="w-full h-full object-cover rounded-[4px]"
                     />
                   </div>
                   <span
                     v-if="appSettings.showIconLabels"
-                    class="text-xs text-white/90 truncate w-full text-center drop-shadow-md px-1 mt-2 pointer-events-none"
+                    class="absolute -bottom-6 w-full text-center text-xs text-white/90 truncate drop-shadow-md pointer-events-none"
                     :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
                   >{{ item.title }}</span>
                 </template>
@@ -2166,18 +2160,18 @@ onBeforeUnmount(() => {
 
                 <!-- Morph C (1x2) -->
                 <template v-else-if="item.size === '1x2'">
-                  <div class="grid grid-cols-2 gap-3 w-full h-full p-4 content-start bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children" :key="child.id" class="flex items-center justify-center">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                  <div class="flex flex-col gap-2 p-3 w-full h-full content-start items-center bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
+                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm flex-shrink-0" />
                     </div>
                   </div>
                 </template>
 
                 <!-- Morph D (2x1) -->
                 <template v-else-if="item.size === '2x1'">
-                  <div class="grid grid-cols-4 gap-3 w-full h-full p-4 content-start bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children" :key="child.id" class="flex items-center justify-center">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                  <div class="flex flex-row gap-2 p-3 w-full h-full content-start items-center bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
+                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm flex-shrink-0" />
                     </div>
                   </div>
                 </template>
