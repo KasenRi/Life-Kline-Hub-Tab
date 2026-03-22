@@ -2132,58 +2132,74 @@ onBeforeUnmount(() => {
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <!-- Morph A (1x1) -->
-                <template v-if="(item.size ?? '1x1') === '1x1'">
-                  <div class="grid grid-cols-2 gap-1 w-full h-full p-2 bg-white/20 backdrop-blur-md rounded-2xl overflow-hidden border border-white/20 shadow-sm pointer-events-none">
-                    <img
-                      v-for="(child, idx) in item.children.slice(0, 4)"
-                      :key="child?.id ?? `${item.id}-1x1-${idx}`"
-                      :src="child.icon"
-                      class="w-full h-full object-cover rounded-[4px]"
-                    />
-                  </div>
-                  <span
-                    v-if="appSettings.showIconLabels"
-                    class="absolute -bottom-6 w-full text-center text-xs text-white/90 truncate drop-shadow-md pointer-events-none"
-                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                  >{{ item.title }}</span>
-                </template>
-
-                <!-- Morph B (2x2) -->
-                <template v-else-if="item.size === '2x2'">
-                  <div class="grid grid-cols-3 gap-3 w-full h-full p-4 bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children.slice(0, 9)" :key="child.id" class="flex items-center justify-center">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                <div :class="['w-full h-full flex-shrink-0 rounded-[18px] bg-white/20 backdrop-blur-md border border-white/20 shadow-sm overflow-hidden flex flex-col items-center justify-center pointer-events-none', ['2x2', '2x4', '4x2', '4x4'].includes(item.size) ? 'p-4' : 'p-2']">
+                  <!-- Morph A: 1x1 or 2x2 -->
+                  <template v-if="(item.size ?? '1x1') === '1x1' || item.size === '2x2'">
+                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 gap-1 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                  </div>
-                </template>
-
-                <!-- Morph C (1x2) -->
-                <template v-else-if="item.size === '1x2'">
-                  <div class="flex flex-col gap-2 p-3 w-full h-full content-start items-center bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm flex-shrink-0" />
+                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 4)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                  </div>
-                </template>
-
-                <!-- Morph D (2x1) -->
-                <template v-else-if="item.size === '2x1'">
-                  <div class="flex flex-row gap-2 p-3 w-full h-full content-start items-center bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm flex-shrink-0" />
+                    <div v-else class="grid grid-cols-3 grid-rows-3 gap-[2px] w-full h-full">
+                      <img v-for="child in item.children.slice(0, 9)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-sm" />
                     </div>
-                  </div>
-                </template>
+                  </template>
 
-                <!-- Morph E (others > 1x1) -->
-                <template v-else>
-                  <div class="flex flex-wrap gap-4 content-start items-start w-full h-full p-4 bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center justify-center w-12">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                  <!-- Morph B: 2x1 -->
+                  <template v-else-if="item.size === '2x1'">
+                    <div v-if="item.children.length <= 3" class="grid grid-cols-3 gap-2 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 3)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                  </div>
-                </template>
+                    <div v-else class="grid grid-cols-3 gap-2 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
+                      <div class="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full">
+                        <img v-for="child in item.children.slice(2, 6)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-[4px]" />
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Morph C: 1x2 -->
+                  <template v-else-if="item.size === '1x2'">
+                    <div v-if="item.children.length <= 3" class="grid grid-rows-3 gap-2 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 3)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
+                    </div>
+                    <div v-else class="grid grid-rows-3 gap-2 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
+                      <div class="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full">
+                        <img v-for="child in item.children.slice(2, 6)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-[4px]" />
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Morph D: 4x2 -->
+                  <template v-else-if="item.size === '4x2'">
+                    <div class="grid grid-cols-5 grid-rows-2 gap-3 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 10)" :key="child.id" :src="child.icon" class="w-full h-full aspect-square object-cover rounded-xl" />
+                    </div>
+                  </template>
+
+                  <!-- Morph E: 2x4 -->
+                  <template v-else-if="item.size === '2x4'">
+                    <div class="grid grid-cols-2 grid-rows-5 gap-3 w-full h-full">
+                      <img v-for="child in item.children.slice(0, 10)" :key="child.id" :src="child.icon" class="w-full h-full aspect-square object-cover rounded-xl" />
+                    </div>
+                  </template>
+
+                  <!-- Fallback for 4x4 or other large sizes -->
+                  <template v-else>
+                    <div class="flex flex-wrap gap-4 content-start items-start w-full h-full">
+                      <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
+                        <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <span
+                  v-if="appSettings.showIconLabels"
+                  class="absolute -bottom-6 w-full text-center text-xs text-white/90 truncate drop-shadow-md pointer-events-none"
+                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                >{{ item.title }}</span>
               </button>
 
               <div
