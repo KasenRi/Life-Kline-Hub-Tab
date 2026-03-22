@@ -2134,15 +2134,15 @@ onBeforeUnmount(() => {
               >
                 <!-- 1x1 Folder -->
                 <template v-if="(item.size ?? '1x1') === '1x1'">
-                  <div class="w-full h-full flex-shrink-0 rounded-[18px] bg-white/20 backdrop-blur-md border border-white/20 shadow-sm overflow-hidden flex flex-col items-center justify-center p-2 box-border pointer-events-none">
-                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 gap-2 w-full h-full">
-                      <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
+                  <div class="w-full h-full flex-shrink-0 rounded-[18px] bg-white/20 backdrop-blur-md border border-white/20 shadow-sm overflow-hidden flex flex-col items-center justify-center box-border pointer-events-none" :style="{ padding: 'calc(var(--a) / 6)' }">
+                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 w-full h-full" :style="{ gap: 'calc(var(--a) / 6)' }">
+                      <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md shadow-sm" />
                     </div>
-                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full">
-                      <img v-for="child in item.children.slice(0, 4)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
+                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 w-full h-full" :style="{ gap: 'calc(var(--a) / 6)' }">
+                      <img v-for="child in item.children.slice(0, 4)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md shadow-sm" />
                     </div>
-                    <div v-else class="grid grid-cols-3 grid-rows-3 gap-[2px] w-full h-full">
-                      <img v-for="child in item.children.slice(0, 9)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-sm" />
+                    <div v-else class="grid grid-cols-3 grid-rows-3 w-full h-full" :style="{ gap: 'calc(var(--a) / 12)' }">
+                      <img v-for="child in item.children.slice(0, 9)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-sm shadow-sm" />
                     </div>
                   </div>
                 </template>
@@ -2169,7 +2169,7 @@ onBeforeUnmount(() => {
                     </div>
                     <div v-else class="grid grid-cols-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
-                      <div class="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full">
+                      <div class="grid grid-cols-2 grid-rows-2 gap-4 w-full h-full">
                         <img v-for="child in item.children.slice(2, 6)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-[4px]" />
                       </div>
                     </div>
@@ -2182,7 +2182,7 @@ onBeforeUnmount(() => {
                     </div>
                     <div v-else class="grid grid-rows-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
-                      <div class="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full">
+                      <div class="grid grid-cols-2 grid-rows-2 gap-4 w-full h-full">
                         <img v-for="child in item.children.slice(2, 6)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-[4px]" />
                       </div>
                     </div>
