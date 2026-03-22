@@ -500,10 +500,10 @@ const effectiveGridColumns = computed(() => {
 })
 const gridStyle = computed(() => {
   return {
-    '--a': `${appSettings.value.iconSize + 16}px`,
-    '--gap': `${appSettings.value.iconGap}px`,
+    '--a': '72px',
+    '--gap': '72px',
     gap: 'var(--gap)',
-    gridTemplateColumns: `repeat(${effectiveGridColumns.value}, var(--a))`,
+    gridTemplateColumns: 'repeat(auto-fill, var(--a))',
     gridAutoRows: 'var(--a)'
   }
 })
@@ -2051,7 +2051,7 @@ onBeforeUnmount(() => {
           <div
             v-if="visibleItems.length"
             ref="gridRef"
-            class="grid grid-flow-dense justify-center"
+            class="grid grid-flow-dense justify-center w-full"
             :style="gridStyle"
           >
             <template v-for="item in visibleItems" :key="item.id">
@@ -2186,55 +2186,32 @@ onBeforeUnmount(() => {
                 </template>
               </button>
 
-              <article
-                v-else
+              <div
+                v-else-if="item.type === 'widget'"
                 data-grid-item
+                :data-item-id="item.id"
                 data-item-type="widget"
-                class="group relative isolate h-full w-full cursor-pointer self-stretch justify-self-stretch transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
-                :class="gridSpanClass(item.size)"
+                :class="[
+                  'group relative cursor-pointer w-full h-full rounded-[24px] bg-white/10 backdrop-blur-xl border border-white/10 shadow-lg p-4 flex flex-col overflow-hidden transition-all hover:bg-white/20',
+                  'transform-gpu will-change-transform backface-hidden [backface-visibility:hidden] hover:-translate-y-0.5 hover:scale-[1.01]',
+                  gridSpanClass(item.size)
+                ]"
+                @dragstart="draggingAppId = item.id"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="absolute inset-0 -z-10 h-full w-full overflow-hidden rounded-[24px] border border-white/[0.14] bg-white/[0.16] shadow-[0_26px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-                  <div class="absolute inset-0" :class="item.accentClass" />
-                  <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full blur-3xl" :class="item.glowClass" />
-                  <div class="absolute inset-x-0 top-0 h-px bg-white/25" />
+                <div class="flex justify-between items-start w-full pointer-events-none">
+                  <span class="text-xs text-white/60 uppercase tracking-widest">{{ item.title }}</span>
+                  <span class="text-[10px] text-white/40 bg-black/20 px-1.5 py-0.5 rounded-full">{{ item.size }}</span>
                 </div>
-
-                <div class="relative flex h-full w-full min-h-0 flex-col justify-between overflow-hidden p-4">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <p class="text-[11px] uppercase tracking-[0.28em] text-white/60">
-                        {{ item.eyebrow }}
-                      </p>
-                      <h2 class="mt-2 text-lg font-semibold tracking-tight text-white">
-                        {{ item.title }}
-                      </h2>
-                    </div>
-
-                    <span class="rounded-full border border-white/10 bg-black/15 px-2.5 py-1 text-[10px] uppercase tracking-[0.24em] text-white/65">
-                      {{ item.size }}
-                    </span>
+                
+                <div class="flex-1 w-full mt-2 text-white/90 overflow-y-auto custom-scrollbar flex flex-col justify-center pointer-events-none">
+                  <div v-if="'content' in item" v-html="item.content"></div>
+                  <div v-else class="flex flex-col gap-1 w-full h-full justify-center">
+                    <div class="text-2xl font-semibold tracking-tight">{{ item.value || 'Widget Content' }}</div>
+                    <div class="text-sm text-white/80" v-for="line in item.lines" :key="line">{{ line }}</div>
                   </div>
-
-                  <div class="mt-4 text-3xl font-semibold tracking-tight text-white">
-                    {{ item.value }}
-                  </div>
-
-                  <div class="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto text-sm text-white/88 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <p
-                      v-for="line in item.lines"
-                      :key="line"
-                      class="rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2 backdrop-blur-sm"
-                    >
-                      {{ line }}
-                    </p>
-                  </div>
-
-                  <p class="mt-auto pt-4 text-xs text-white/65">
-                    {{ item.footer }}
-                  </p>
                 </div>
-              </article>
+              </div>
             </template>
           </div>
 
