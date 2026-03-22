@@ -2134,11 +2134,11 @@ onBeforeUnmount(() => {
               >
                 <!-- 1x1 Folder -->
                 <template v-if="(item.size ?? '1x1') === '1x1'">
-                  <div class="w-full h-full flex-shrink-0 rounded-[18px] bg-white/20 backdrop-blur-md border border-white/20 shadow-sm overflow-hidden flex flex-col items-center justify-center p-2 pointer-events-none">
-                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 gap-1 w-full h-full">
+                  <div class="w-full h-full flex-shrink-0 rounded-[18px] bg-white/20 backdrop-blur-md border border-white/20 shadow-sm overflow-hidden flex flex-col items-center justify-center p-2 box-border pointer-events-none">
+                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 gap-2 w-full h-full">
                       <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full">
+                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full">
                       <img v-for="child in item.children.slice(0, 4)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
                     <div v-else class="grid grid-cols-3 grid-rows-3 gap-[2px] w-full h-full">
@@ -2151,25 +2151,25 @@ onBeforeUnmount(() => {
                 <template v-else>
                   <!-- 2x2 Folder -->
                   <template v-if="item.size === '2x2'">
-                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-if="item.children.length <= 2" class="grid grid-cols-2 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-else-if="item.children.length <= 4" class="grid grid-cols-2 grid-rows-2 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 4)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                    <div v-else class="grid grid-cols-3 grid-rows-3 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-else class="grid grid-cols-3 grid-rows-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 9)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
                   </template>
 
                   <!-- 2x1 Folder -->
                   <template v-else-if="item.size === '2x1'">
-                    <div v-if="item.children.length <= 3" class="grid grid-cols-3 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-if="item.children.length <= 3" class="grid grid-cols-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 3)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                    <div v-else class="grid grid-cols-3 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-else class="grid grid-cols-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
-                      <div class="grid grid-cols-2 grid-rows-2 w-full h-full" :style="{ gap: 'calc(var(--inner-gap) / 2)' }">
+                      <div class="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full">
                         <img v-for="child in item.children.slice(2, 6)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-[4px]" />
                       </div>
                     </div>
@@ -2177,12 +2177,12 @@ onBeforeUnmount(() => {
 
                   <!-- 1x2 Folder -->
                   <template v-else-if="item.size === '1x2'">
-                    <div v-if="item.children.length <= 3" class="grid grid-rows-3 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-if="item.children.length <= 3" class="grid grid-rows-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 3)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
                     </div>
-                    <div v-else class="grid grid-rows-3 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none" :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }">
+                    <div v-else class="grid grid-rows-3 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none">
                       <img v-for="child in item.children.slice(0, 2)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-md" />
-                      <div class="grid grid-cols-2 grid-rows-2 w-full h-full" :style="{ gap: 'calc(var(--inner-gap) / 2)' }">
+                      <div class="grid grid-cols-2 grid-rows-2 gap-2 w-full h-full">
                         <img v-for="child in item.children.slice(2, 6)" :key="child.id" :src="child.icon" class="w-full h-full object-cover rounded-[4px]" />
                       </div>
                     </div>
@@ -2190,27 +2190,24 @@ onBeforeUnmount(() => {
 
                   <!-- 4x2 Folder -->
                   <div v-else-if="item.size === '4x2'"
-                    class="grid grid-cols-5 grid-rows-2 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none"
-                    :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }"
+                    class="grid grid-cols-5 grid-rows-2 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none"
                   >
                     <img v-for="child in item.children.slice(0, 10)" :key="child.id" :src="child.icon" class="w-full h-full aspect-square object-cover rounded-xl" />
                   </div>
 
                   <!-- 2x4 Folder -->
                   <div v-else-if="item.size === '2x4'"
-                    class="grid grid-cols-2 grid-rows-5 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none"
-                    :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }"
+                    class="grid grid-cols-2 grid-rows-5 p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none"
                   >
                     <img v-for="child in item.children.slice(0, 10)" :key="child.id" :src="child.icon" class="w-full h-full aspect-square object-cover rounded-xl" />
                   </div>
 
                   <!-- Fallback for 4x4 or other large sizes -->
                   <div v-else
-                    class="flex flex-wrap content-start items-start w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden pointer-events-none"
-                    :style="{ '--inner-gap': 'calc(var(--a) / 2)', padding: 'var(--inner-gap)', gap: 'var(--inner-gap)' }"
+                    class="flex flex-wrap content-start items-start p-4 gap-4 w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md border border-white/10 shadow-lg overflow-hidden box-border pointer-events-none"
                   >
-                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center w-12">
-                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center">
+                      <img :src="child.icon" class="w-14 h-14 rounded-2xl object-cover shadow-sm" />
                     </div>
                   </div>
                 </template>
