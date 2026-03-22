@@ -1813,8 +1813,11 @@ function initSortable() {
       draggedGridItemType.value = (item?.dataset.itemType as ItemType | undefined) ?? null
       
     },
-    onMove() {
-      return true
+    onMove(evt) {
+      if (draggedGridItemType.value === 'app' && evt.related?.classList.contains('is-folder-target')) {
+        return false;
+      }
+      return true;
     },
     onEnd(event: SortableEvent) {
       if (event.oldIndex == null || event.newIndex == null) {
@@ -2123,7 +2126,7 @@ onBeforeUnmount(() => {
                 :data-item-id="item.id"
                 data-item-type="folder"
                 :class="[
-                  'group relative cursor-pointer flex flex-col items-center justify-center',
+                  'group relative cursor-pointer flex flex-col items-center justify-center is-folder-target',
                   gridSpanClass(item.size),
                   hoverFolderId === item.id ? 'ring-4 ring-blue-500 scale-105 transition-all duration-300' : 'transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01]',
                   'transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]'
@@ -2137,7 +2140,7 @@ onBeforeUnmount(() => {
               >
                 <!-- Morph A (1x1) -->
                 <template v-if="(item.size ?? '1x1') === '1x1'">
-                  <div class="w-16 h-16 flex-shrink-0 rounded-[18px] bg-white/20 backdrop-blur-md p-1.5 grid grid-cols-2 gap-1 overflow-hidden border border-white/20 shadow-sm pointer-events-none">
+                  <div class="grid grid-cols-2 gap-1 w-16 h-16 flex-shrink-0 aspect-square p-2 bg-white/20 backdrop-blur-md rounded-2xl overflow-hidden border border-white/20 shadow-sm pointer-events-none">
                     <img
                       v-for="(child, idx) in item.children.slice(0, 4)"
                       :key="child?.id ?? `${item.id}-1x1-${idx}`"
@@ -2152,10 +2155,37 @@ onBeforeUnmount(() => {
                   >{{ item.title }}</span>
                 </template>
 
-                <!-- Morph B (> 1x1) -->
+                <!-- Morph B (2x2) -->
+                <template v-else-if="item.size === '2x2'">
+                  <div class="grid grid-cols-3 gap-3 w-full h-full p-4 bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                    <div v-for="child in item.children.slice(0, 9)" :key="child.id" class="flex items-center justify-center">
+                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Morph C (1x2) -->
+                <template v-else-if="item.size === '1x2'">
+                  <div class="grid grid-cols-2 gap-3 w-full h-full p-4 content-start bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                    <div v-for="child in item.children" :key="child.id" class="flex items-center justify-center">
+                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Morph D (2x1) -->
+                <template v-else-if="item.size === '2x1'">
+                  <div class="grid grid-cols-4 gap-3 w-full h-full p-4 content-start bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                    <div v-for="child in item.children" :key="child.id" class="flex items-center justify-center">
+                      <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Morph E (others > 1x1) -->
                 <template v-else>
-                  <div class="w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md p-5 flex flex-wrap gap-4 content-start items-start overflow-hidden border border-white/10 shadow-lg pointer-events-none">
-                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
+                  <div class="flex flex-wrap gap-4 content-start items-start w-full h-full p-4 bg-white/20 backdrop-blur-md rounded-[24px] overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                    <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center justify-center w-12">
                       <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
                     </div>
                   </div>
