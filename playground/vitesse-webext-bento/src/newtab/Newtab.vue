@@ -2065,25 +2065,24 @@ onBeforeUnmount(() => {
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="app"
-                class="group flex flex-col items-center gap-1.5"
+                class="group relative cursor-pointer flex flex-col items-center justify-start w-full h-full gap-1.5 transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]"
                 @dragstart="draggingAppId = item.id"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div class="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0">
+                <div class="w-full aspect-square rounded-2xl overflow-hidden shadow-sm pointer-events-none">
                   <img
                     :src="item.icon"
                     :alt="item.title"
                     class="w-full h-full object-cover"
+                    @load="refreshDominantColor(item.icon, item.title)"
                   >
                 </div>
                 <span
                   v-if="appSettings.showIconLabels"
-                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md"
+                  class="text-xs text-white/90 truncate w-full text-center drop-shadow-md pointer-events-none"
                   :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                >
-                  {{ item.title }}
-                </span>
+                >{{ item.title }}</span>
               </button>
 
               <!-- APP: larger card (1x2, 2x1, 2x2, etc.) -->
@@ -2093,28 +2092,26 @@ onBeforeUnmount(() => {
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="app"
-                :class="['group', gridSpanClass(item.size)]"
+                :class="['group relative cursor-pointer transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01] transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]', gridSpanClass(item.size)]"
                 @dragstart="draggingAppId = item.id"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <div
-                  class="w-full h-full rounded-[24px] overflow-hidden flex flex-col items-center justify-center p-2 transition-transform duration-300 group-hover:scale-[1.02]"
+                  class="w-full h-full rounded-[24px] overflow-hidden flex flex-col items-center justify-center p-4 shadow-lg transition-colors pointer-events-none"
                   :style="{ backgroundColor: getAppTileBackground(item) }"
                 >
                   <img
                     :src="item.icon"
                     :alt="item.title"
-                    class="w-16 h-16 object-contain flex-shrink-0"
+                    class="w-16 h-16 object-contain drop-shadow-md mb-2"
                     @load="refreshDominantColor(item.icon, item.title)"
                   >
                   <span
                     v-if="appSettings.showIconLabels"
-                    class="mt-2 w-full truncate text-center text-sm text-white/92 drop-shadow-md"
+                    class="text-sm font-medium text-white/90 truncate max-w-full drop-shadow-md"
                     :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                  >
-                    {{ item.title }}
-                  </span>
+                  >{{ item.title }}</span>
                 </div>
               </button>
 
@@ -2126,9 +2123,10 @@ onBeforeUnmount(() => {
                 :data-item-id="item.id"
                 data-item-type="folder"
                 :class="[
-                  'group relative flex flex-col items-center gap-1.5',
+                  'group relative cursor-pointer',
                   gridSpanClass(item.size),
-                  hoverFolderId === item.id ? 'ring-4 ring-blue-500 scale-105 transition-all duration-300' : ''
+                  hoverFolderId === item.id ? 'ring-4 ring-blue-500 scale-105 transition-all' : 'transition-transform duration-300 hover:-translate-y-0.5 hover:scale-[1.01]',
+                  'transform-gpu will-change-transform backface-hidden [backface-visibility:hidden]'
                 ]"
                 @dragover.prevent
                 @dragenter.prevent="hoverFolderId = item.id"
@@ -2138,43 +2136,28 @@ onBeforeUnmount(() => {
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
                 <!-- Morph A (1x1) -->
-                <template v-if="(item.size ?? '1x1') === '1x1'">
-                  <div class="w-full flex-1 min-h-0 rounded-2xl bg-white/20 backdrop-blur-md p-2.5 transition-all duration-200">
-                    <div class="grid grid-cols-2 gap-1.5 w-full h-full">
-                      <img
-                        v-for="(child, idx) in item.children.slice(0, 4)"
-                        :key="child?.id ?? `${item.id}-1x1-${idx}`"
-                        :src="child.icon"
-                        :alt="child.title"
-                        class="w-full h-full object-cover rounded-[4px]"
-                        @load="ensureDominantColor(child.icon, child.title)"
-                      >
-                    </div>
+                <div v-if="(item.size ?? '1x1') === '1x1'" class="flex flex-col items-center justify-start w-full h-full gap-1.5 pointer-events-none">
+                  <div class="w-full aspect-square rounded-2xl bg-white/20 backdrop-blur-md p-2 grid grid-cols-2 gap-1.5 overflow-hidden border border-white/10">
+                    <img
+                      v-for="(child, idx) in item.children.slice(0, 4)"
+                      :key="child?.id ?? `${item.id}-1x1-${idx}`"
+                      :src="child.icon"
+                      class="w-full h-full object-cover rounded-[4px]"
+                    />
                   </div>
                   <span
                     v-if="appSettings.showIconLabels"
-                    class="w-full truncate text-center text-xs text-white/90 drop-shadow-md flex-shrink-0"
+                    class="text-xs text-white/90 truncate w-full text-center drop-shadow-md"
                     :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                  >
-                    {{ item.title }}
-                  </span>
-                </template>
+                  >{{ item.title }}</span>
+                </div>
 
                 <!-- Morph B (> 1x1) -->
-                <template v-else>
-                  <div class="w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md p-4 transition-all duration-200">
-                    <div class="flex flex-wrap gap-4 content-start items-start w-full h-full overflow-hidden">
-                      <img
-                        v-for="child in item.children"
-                        :key="child.id"
-                        :src="child.icon"
-                        :alt="child.title"
-                        class="w-14 h-14 rounded-2xl object-cover shadow-sm flex-shrink-0"
-                        @load="ensureDominantColor(child.icon, child.title)"
-                      >
-                    </div>
+                <div v-else class="w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md p-5 flex flex-wrap gap-4 content-start items-start overflow-hidden border border-white/10 shadow-lg pointer-events-none">
+                  <div v-for="child in item.children" :key="child.id" class="flex flex-col items-center gap-1 w-12">
+                    <img :src="child.icon" class="w-12 h-12 rounded-xl object-cover shadow-sm" />
                   </div>
-                </template>
+                </div>
               </button>
 
               <article
