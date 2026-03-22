@@ -399,8 +399,10 @@ const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 14
 const wheelPageTurnLockedUntil = ref(0)
 const draggedGridItemId = ref<string | null>(null)
 const draggedGridItemType = ref<ItemType | null>(null)
-const dragOverFolderId = ref<string | null>(null)
-const pendingDropFolderId = ref<string | null>(null)
+const hoverFolderId = ref<string | null>(null)
+const draggingAppId = ref<string | null>(null)
+
+
 
 let sortable: Sortable | null = null
 let clockTimer: number | null = null
@@ -800,76 +802,45 @@ function isLargeFolderPreviewSize(size: GridSize | undefined) {
   return size === '4x2' || size === '2x4' || size === '4x4'
 }
 
-function isFolderDragActive(folder: FolderItem) {
-  return dragOverFolderId.value === folder.id && draggedGridItemType.value === 'app'
-}
+function handleDropToFolder(targetFolderId: string) {
+  if (!draggingAppId.value) return
 
-function resetFolderDragState() {
-  dragOverFolderId.value = null
-  pendingDropFolderId.value = null
-}
-
-function handleFolderDragOver(folder: FolderItem, event: DragEvent) {
-  event.preventDefault()
-  if (draggedGridItemType.value === 'app' && draggedGridItemId.value !== folder.id)
-    dragOverFolderId.value = folder.id
-}
-
-function handleFolderDragLeave(folder: FolderItem, event: DragEvent) {
-  const relatedTarget = event.relatedTarget as Node | null
-  const currentTarget = event.currentTarget as HTMLElement | null
-  if (currentTarget?.contains(relatedTarget))
-    return
-
-  if (dragOverFolderId.value === folder.id)
-    dragOverFolderId.value = null
-}
-
-function moveAppIntoFolder(appId: string | null, folderId: string | null) {
   const page = activePage.value
-  if (!page || !appId || !folderId || appId === folderId)
-    return false
+  if (!page) return
 
-  const appLocation = findAppLocation(appId)
-  if (!appLocation || appLocation.childIndex != null)
-    return false
-
-  const folderLocation = findTopLevelItemLocation(folderId)
-  if (!folderLocation?.item || !isFolderItem(folderLocation.item))
-    return false
+  const appLocation = findAppLocation(draggingAppId.value)
+  if (!appLocation || appLocation.childIndex != null) {
+    hoverFolderId.value = null
+    draggingAppId.value = null
+    return
+  }
 
   const movedApp = appLocation.app
+  
   const nextItems = page.items
-    .filter(item => item.id !== movedApp.id)
+    .filter(item => item.id !== draggingAppId.value)
     .map((item) => {
-      if (!isFolderItem(item) || item.id !== folderId)
-        return item
-
-      return {
-        ...item,
-        children: [...item.children, movedApp],
+      if (item.type === 'folder' && item.id === targetFolderId) {
+        return {
+          ...item,
+          children: [...item.children, movedApp]
+        }
       }
+      return item
     })
 
   const pageIndex = pages.value.findIndex(item => item.id === page.id)
-  if (pageIndex < 0)
-    return false
-
-  const nextPages = [...pages.value]
-  nextPages[pageIndex] = {
-    ...page,
-    items: nextItems,
+  if (pageIndex >= 0) {
+    const nextPages = [...pages.value]
+    nextPages[pageIndex] = {
+      ...page,
+      items: nextItems
+    }
+    pages.value = nextPages
   }
-  pages.value = nextPages
-  return true
-}
 
-function handleDropIntoFolder(event: DragEvent, folder: FolderItem) {
-  event.preventDefault()
-  if (draggedGridItemType.value !== 'app' || draggedGridItemId.value === folder.id)
-    return
-
-  pendingDropFolderId.value = folder.id
+  hoverFolderId.value = null
+  draggingAppId.value = null
 }
 
 function updateClock() {
@@ -1840,41 +1811,21 @@ function initSortable() {
       const item = event.item as HTMLElement | null
       draggedGridItemId.value = item?.dataset.itemId ?? null
       draggedGridItemType.value = (item?.dataset.itemType as ItemType | undefined) ?? null
-      resetFolderDragState()
+      
     },
-    onMove(event: { dragged: HTMLElement, related: HTMLElement | null }, originalEvent: Event) {
-      if (draggedGridItemType.value !== 'app') {
-        dragOverFolderId.value = null
-        return true
-      }
-
-      const target = originalEvent.target as HTMLElement | null
-      const folderElement = target?.closest('[data-item-type="folder"]') as HTMLElement | null
-      const folderId = folderElement?.dataset.itemId ?? null
-      dragOverFolderId.value = folderId && folderId !== draggedGridItemId.value ? folderId : null
+    onMove() {
       return true
     },
     onEnd(event: SortableEvent) {
-      const dropFolderId = pendingDropFolderId.value ?? dragOverFolderId.value
-      if (draggedGridItemType.value === 'app' && dropFolderId) {
-        moveAppIntoFolder(draggedGridItemId.value, dropFolderId)
-        draggedGridItemId.value = null
-        draggedGridItemType.value = null
-        resetFolderDragState()
-        return
-      }
-
       if (event.oldIndex == null || event.newIndex == null) {
         draggedGridItemId.value = null
         draggedGridItemType.value = null
-        resetFolderDragState()
         return
       }
 
       reorderActivePage(event.oldIndex, event.newIndex)
       draggedGridItemId.value = null
       draggedGridItemType.value = null
-      resetFolderDragState()
     },
   })
 
@@ -2115,6 +2066,7 @@ onBeforeUnmount(() => {
                 :data-item-id="item.id"
                 data-item-type="app"
                 class="group flex flex-col items-center gap-1.5"
+                @dragstart="draggingAppId = item.id"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
@@ -2142,6 +2094,7 @@ onBeforeUnmount(() => {
                 :data-item-id="item.id"
                 data-item-type="app"
                 :class="['group', gridSpanClass(item.size)]"
+                @dragstart="draggingAppId = item.id"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
@@ -2172,104 +2125,56 @@ onBeforeUnmount(() => {
                 data-grid-item
                 :data-item-id="item.id"
                 data-item-type="folder"
-                :class="['group flex flex-col items-center gap-1.5', gridSpanClass(item.size)]"
-                @dragover.prevent="handleFolderDragOver(item, $event)"
-                @dragleave="handleFolderDragLeave(item, $event)"
-                @drop="handleDropIntoFolder($event, item)"
+                :class="[
+                  'group relative flex flex-col items-center gap-1.5',
+                  gridSpanClass(item.size),
+                  hoverFolderId === item.id ? 'ring-4 ring-blue-500 scale-105 transition-all duration-300' : ''
+                ]"
+                @dragover.prevent
+                @dragenter.prevent="hoverFolderId = item.id"
+                @dragleave.prevent="hoverFolderId = null"
+                @drop.stop="handleDropToFolder(item.id)"
                 @click="openItem(item)"
                 @contextmenu.stop.prevent="openContextMenu($event, item.id, item.type)"
               >
-                <div
-                  class="w-full flex-1 min-h-0 rounded-2xl bg-white/20 backdrop-blur-md overflow-hidden transition-all duration-200"
-                  :class="isFolderDragActive(item) ? 'ring-4 ring-blue-500/50 scale-105' : ''"
-                >
-                  <!-- 1x1 folder: 2x2 grid, max 4 children -->
-                  <div
-                    v-if="(item.size ?? '1x1') === '1x1'"
-                    class="grid grid-cols-2 gap-1 p-2 w-full h-full"
-                  >
-                    <div
-                      v-for="(child, idx) in getFolderPreviewApps(item, 4)"
-                      :key="child?.id ?? `${item.id}-1x1-${idx}`"
-                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
-                    >
+                <!-- Morph A (1x1) -->
+                <template v-if="(item.size ?? '1x1') === '1x1'">
+                  <div class="w-full flex-1 min-h-0 rounded-2xl bg-white/20 backdrop-blur-md p-2.5 transition-all duration-200">
+                    <div class="grid grid-cols-2 gap-1.5 w-full h-full">
                       <img
-                        v-if="child"
+                        v-for="(child, idx) in item.children.slice(0, 4)"
+                        :key="child?.id ?? `${item.id}-1x1-${idx}`"
                         :src="child.icon"
                         :alt="child.title"
-                        class="w-full aspect-square rounded-md object-cover"
+                        class="w-full h-full object-cover rounded-[4px]"
                         @load="ensureDominantColor(child.icon, child.title)"
                       >
                     </div>
                   </div>
+                  <span
+                    v-if="appSettings.showIconLabels"
+                    class="w-full truncate text-center text-xs text-white/90 drop-shadow-md flex-shrink-0"
+                    :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
+                  >
+                    {{ item.title }}
+                  </span>
+                </template>
 
-                  <!-- 1x2 folder: 2-col grid, vertical -->
-                  <div
-                    v-else-if="item.size === '1x2'"
-                    class="grid grid-cols-2 gap-2 p-3 w-full h-full content-start"
-                  >
-                    <div
-                      v-for="(child, idx) in getFolderPreviewApps(item, 8)"
-                      :key="child?.id ?? `${item.id}-1x2-${idx}`"
-                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
-                    >
+                <!-- Morph B (> 1x1) -->
+                <template v-else>
+                  <div class="w-full h-full rounded-[24px] bg-white/20 backdrop-blur-md p-4 transition-all duration-200">
+                    <div class="flex flex-wrap gap-4 content-start items-start w-full h-full overflow-hidden">
                       <img
-                        v-if="child"
+                        v-for="child in item.children"
+                        :key="child.id"
                         :src="child.icon"
                         :alt="child.title"
-                        class="w-full aspect-square rounded-md object-cover"
+                        class="w-14 h-14 rounded-2xl object-cover shadow-sm flex-shrink-0"
                         @load="ensureDominantColor(child.icon, child.title)"
                       >
                     </div>
                   </div>
-
-                  <!-- 2x1 folder: 4-col grid, horizontal -->
-                  <div
-                    v-else-if="item.size === '2x1'"
-                    class="grid grid-cols-4 gap-2 p-3 w-full h-full items-center"
-                  >
-                    <div
-                      v-for="(child, idx) in getFolderPreviewApps(item, 8)"
-                      :key="child?.id ?? `${item.id}-2x1-${idx}`"
-                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
-                    >
-                      <img
-                        v-if="child"
-                        :src="child.icon"
-                        :alt="child.title"
-                        class="w-full aspect-square rounded-md object-cover"
-                        @load="ensureDominantColor(child.icon, child.title)"
-                      >
-                    </div>
-                  </div>
-
-                  <!-- 2x2 and larger: 4-col grid -->
-                  <div
-                    v-else
-                    class="grid grid-cols-4 gap-3 p-4 w-full h-full"
-                  >
-                    <div
-                      v-for="(child, idx) in getFolderPreviewApps(item, 16)"
-                      :key="child?.id ?? `${item.id}-lg-${idx}`"
-                      class="w-full aspect-square rounded-md overflow-hidden bg-white/[0.12]"
-                    >
-                      <img
-                        v-if="child"
-                        :src="child.icon"
-                        :alt="child.title"
-                        class="w-full aspect-square rounded-md object-cover"
-                        @load="ensureDominantColor(child.icon, child.title)"
-                      >
-                    </div>
-                  </div>
-                </div>
-                <span
-                  v-if="appSettings.showIconLabels"
-                  class="w-full truncate text-center text-xs text-white/90 drop-shadow-md flex-shrink-0"
-                  :style="{ opacity: appSettings.iconLabelOpacity / 100 }"
-                >
-                  {{ item.title }}
-                </span>
+                </template>
               </button>
 
               <article
